@@ -22,15 +22,15 @@ public class resPanel extends JPanel {
     // EDIT HERE: Adjust x, y, width, height for each rectangle below.
     // These are screen-space overlays and are NOT affected by the camera pan.
     private final Rectangle[] overlayRects = {
-            new Rectangle(70, 120, 240, 480),
-            new Rectangle(200, 120, 240, 480),
-            new Rectangle(330, 120, 240, 480),
-            new Rectangle(460, 120, 240, 480),
-            new Rectangle(590, 120, 240, 480)
+            new Rectangle(158, 427, 240, 480),
+            new Rectangle(459, 359, 240, 480),
+            new Rectangle(797, 385, 240, 480),
+            new Rectangle(1168, 359, 240, 480),
+            new Rectangle(1539, 492, 240, 480)
     };
         // EDIT HERE: Set image paths for each rectangle (must match the 5 rectangles above).
         private final String[] overlayImagePaths = {
-            "assets/res/Characters/kriegs/AliveKriegs.png",
+            "assets/res/Characters/Kriegs/AliveKriegs.png",
             "assets/res/Characters/Azrael/AliveAzrael.png",
             "assets/res/Characters/Gambit/AliveGambit.png",
             "assets/res/Characters/Lazarus/AliveLazarus.png",
