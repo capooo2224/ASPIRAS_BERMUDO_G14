@@ -14,19 +14,24 @@ import java.io.IOException;
 
 public class resPanel extends JPanel {
     private final Image backgroundImage = new ImageIcon("assets/res/Backgrounds/sublab.jpg").getImage();
+    private static final int MAX_PAN_X = 24;
+    private static final int MAX_PAN_Y = 14;
     private double targetMouseX = 400;
     private double targetMouseY = 300;
     private double smoothMouseX = 400;
     private double smoothMouseY = 300;
+    private int lastMouseX = 400;
+    private int lastMouseY = 300;
+    private boolean isMouseInsidePanel = false;
 
     // EDIT HERE: Adjust x, y, width, height for each rectangle below.
-    // These are screen-space overlays and are NOT affected by the camera pan.
     private final Rectangle[] overlayRects = {
-            new Rectangle(158, 427, 240, 480),
-            new Rectangle(459, 359, 240, 480),
-            new Rectangle(797, 385, 240, 480),
-            new Rectangle(1168, 359, 240, 480),
-            new Rectangle(1539, 492, 240, 480)
+            new Rectangle(158, 227, 200, 480),
+            new Rectangle(459, 259, 200, 480),
+            new Rectangle(659, 285, 200, 480),
+            new Rectangle(759, 259, 200, 480),
+            new Rectangle(939, 292, 200, 480),
+            new Rectangle(1000, 285, 200, 480)
     };
         // EDIT HERE: Set image paths for each rectangle (must match the 5 rectangles above).
         private final String[] overlayImagePaths = {
@@ -34,7 +39,8 @@ public class resPanel extends JPanel {
             "assets/res/Characters/Azrael/AliveAzrael.png",
             "assets/res/Characters/Gambit/AliveGambit.png",
             "assets/res/Characters/Lazarus/AliveLazarus.png",
-            "assets/res/Characters/Raphaela/AliveRaphaela.png"
+            "assets/res/Characters/Raphaela/AliveRaphaela.png",
+            "assets/res/Characters/Terry/AliveTerry.png"
         };
         private final BufferedImage[] overlayImages = loadOverlayImages();
         private int hoveredOverlayIndex = -1;
@@ -47,6 +53,9 @@ public class resPanel extends JPanel {
             // Small lerp step gives a smoother camera follow.
             smoothMouseX += (targetMouseX - smoothMouseX) * 0.12;
             smoothMouseY += (targetMouseY - smoothMouseY) * 0.12;
+            if (isMouseInsidePanel) {
+                updateHoveredOverlay(lastMouseX, lastMouseY);
+            }
             repaint();
         });
         cameraEaseTimer.start();
@@ -56,6 +65,9 @@ public class resPanel extends JPanel {
             public void mouseMoved(MouseEvent e) {
                 targetMouseX = e.getX();
                 targetMouseY = e.getY();
+                lastMouseX = e.getX();
+                lastMouseY = e.getY();
+                isMouseInsidePanel = true;
                 updateHoveredOverlay(e.getX(), e.getY());
             }
 
@@ -70,6 +82,7 @@ public class resPanel extends JPanel {
             public void mouseExited(MouseEvent e) {
                 targetMouseX = getWidth() / 2.0;
                 targetMouseY = getHeight() / 2.0;
+                isMouseInsidePanel = false;
                 hoveredOverlayIndex = -1;
                 setCursor(Cursor.getDefaultCursor());
             }
@@ -90,24 +103,22 @@ public class resPanel extends JPanel {
 
         int panelW = getWidth();
         int panelH = getHeight();
-        int maxPanX = 24;
-        int maxPanY = 14;
 
         double xRatio = panelW == 0 ? 0.0 : smoothMouseX / panelW;
         double yRatio = panelH == 0 ? 0.0 : smoothMouseY / panelH;
 
-        int drawX = (int) (-maxPanX + (2 * maxPanX * xRatio));
-        int drawY = (int) (-maxPanY + (2 * maxPanY * yRatio));
-        int drawW = panelW + (2 * maxPanX);
-        int drawH = panelH + (2 * maxPanY);
+        int cameraOffsetX = (int) (-MAX_PAN_X + (2 * MAX_PAN_X * xRatio));
+        int cameraOffsetY = (int) (-MAX_PAN_Y + (2 * MAX_PAN_Y * yRatio));
+        int drawW = panelW + (2 * MAX_PAN_X);
+        int drawH = panelH + (2 * MAX_PAN_Y);
 
-        g.drawImage(backgroundImage, drawX, drawY, drawW, drawH, this);
+        g.drawImage(backgroundImage, cameraOffsetX, cameraOffsetY, drawW, drawH, this);
 
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setStroke(new BasicStroke(3f));
         g2.setFont(new Font("SansSerif", Font.BOLD, 12));
         for (int i = 0; i < overlayRects.length; i++) {
-            Rectangle rect = overlayRects[i];
+            Rectangle rect = getCameraShiftedRect(overlayRects[i]);
             BufferedImage img = overlayImages[i];
             if (img != null) {
                 Rectangle drawRect = getFittedImageRect(i);
@@ -136,7 +147,7 @@ public class resPanel extends JPanel {
     }
 
     private Rectangle getFittedImageRect(int index) {
-        Rectangle rect = overlayRects[index];
+        Rectangle rect = getCameraShiftedRect(overlayRects[index]);
         BufferedImage img = overlayImages[index];
         if (img == null || img.getWidth() <= 0 || img.getHeight() <= 0) {
             return new Rectangle(rect);
@@ -148,6 +159,28 @@ public class resPanel extends JPanel {
         int imageX = rect.x + (rect.width - scaledW) / 2;
         int imageY = rect.y + (rect.height - scaledH) / 2;
         return new Rectangle(imageX, imageY, scaledW, scaledH);
+    }
+
+    private Rectangle getCameraShiftedRect(Rectangle baseRect) {
+        return new Rectangle(baseRect.x + getCameraOffsetX(), baseRect.y + getCameraOffsetY(), baseRect.width, baseRect.height);
+    }
+
+    private int getCameraOffsetX() {
+        int panelW = getWidth();
+        if (panelW <= 0) {
+            return 0;
+        }
+        double xRatio = smoothMouseX / panelW;
+        return (int) (-MAX_PAN_X + (2 * MAX_PAN_X * xRatio));
+    }
+
+    private int getCameraOffsetY() {
+        int panelH = getHeight();
+        if (panelH <= 0) {
+            return 0;
+        }
+        double yRatio = smoothMouseY / panelH;
+        return (int) (-MAX_PAN_Y + (2 * MAX_PAN_Y * yRatio));
     }
 
     private void updateHoveredOverlay(int mouseX, int mouseY) {
