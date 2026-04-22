@@ -13,7 +13,7 @@ public class combatPanel extends JPanel {
         setPreferredSize(new Dimension(800, 600));
         setLayout(new BorderLayout());
 
-        JLabel label = new JLabel("OMORI Placeholder Screen", SwingConstants.CENTER);
+        JLabel label = new JLabel("Combat Screen", SwingConstants.CENTER);
         label.setFont(new Font("SansSerif", Font.BOLD, 24));
         add(label, BorderLayout.CENTER);
 
