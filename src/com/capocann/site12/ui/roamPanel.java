@@ -11,9 +11,15 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
 public class roamPanel extends JPanel {
     private static final int PANEL_WIDTH = 800;
@@ -22,6 +28,10 @@ public class roamPanel extends JPanel {
     private static final Color PANEL_FILL = new Color(18, 18, 18);
     private static final Color CARD_FILL = new Color(35, 35, 35);
     private static final Color CARD_SELECTED = new Color(90, 120, 170);
+    private static final Color TILE_UNEXPLORED = new Color(45, 45, 45);
+    private static final Color TILE_EXPLORED = new Color(80, 95, 120);
+    private static final Color TILE_BORDER = new Color(25, 25, 25);
+    private static final Color PLAYER_MARKER = new Color(255, 214, 102);
     private static final Color TEXT_PRIMARY = Color.WHITE;
     private static final Color TEXT_SECONDARY = new Color(220, 220, 220);
     private static final Font TITLE_FONT = new Font("SansSerif", Font.BOLD, 22);
@@ -34,21 +44,54 @@ public class roamPanel extends JPanel {
     private final GameData gameData = new GameData();
     private final Main main;
 
-    private final JLabel selectedPortraitLabel = new JLabel();
-    private final JLabel selectedNameLabel = new JLabel();
-    private final JLabel selectedHealthLabel = new JLabel();
-    private final JLabel selectedStateLabel = new JLabel();
-    private final JLabel selectedPathLabel = new JLabel();
     private final JTextArea backpackSummaryArea = new JTextArea();
     private final JPanel portraitRosterPanel = new JPanel();
+    private final JLabel infoPanelTitle = new JLabel("Backpack Summary", SwingConstants.LEFT);
+    private final JPanel tileExplorerPanel = new JPanel() {
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            paintTileExplorer((Graphics2D) g);
+        }
+    };
+    private final Map<String, Integer> inventoryCounts = new HashMap<>();
+    private final List<String> eventLogs = new ArrayList<>();
+    private final List<LootEntry> lootTable = new ArrayList<>();
+    private final Random random = new Random();
 
-    private String selectedCharacterId = CHARACTER_ORDER[0];
+    private boolean[][] exploredTiles;
+    private int mapRows = 6;
+    private int mapCols = 8;
+    private int playerRow = 0;
+    private int playerCol = 0;
+    private double combatChance = 0.35;
+    private double lootChance = 0.10;
+
+    private enum InfoMode { BACKPACK, LOGS }
+    private InfoMode infoMode = InfoMode.BACKPACK;
+
+    private static class LootEntry {
+        private final String itemId;
+        private final int minQty;
+        private final int maxQty;
+        private final int weight;
+
+        private LootEntry(String itemId, int minQty, int maxQty, int weight) {
+            this.itemId = itemId;
+            this.minQty = minQty;
+            this.maxQty = maxQty;
+            this.weight = weight;
+        }
+    }
 
     public roamPanel(Main main) {
         this.main = main;
         setPreferredSize(new Dimension(PANEL_WIDTH, PANEL_HEIGHT));
         setLayout(new GridBagLayout());
+        loadMapConfig();
         loadInventoryData();
+        loadLootTable();
+        initializeExplorationState();
 
         JPanel leftPanel = createLeftPanel();
         JPanel rightPanel = createRightPanel();
@@ -71,8 +114,9 @@ public class roamPanel extends JPanel {
         rightConstraints.insets = new Insets(16, 8, 16, 16);
         add(rightPanel, rightConstraints);
 
-        refreshSelectedCharacterDetails();
+        refreshPartyList();
         refreshBackpackSummary();
+        refreshInfoPanel();
     }
 
     @Override
@@ -85,7 +129,7 @@ public class roamPanel extends JPanel {
         JPanel leftPanel = createPanelContainer();
         leftPanel.setLayout(new BorderLayout(10, 10));
 
-        JLabel title = new JLabel("Portrait Roster", SwingConstants.LEFT);
+        JLabel title = new JLabel("Party List", SwingConstants.LEFT);
         title.setForeground(TEXT_PRIMARY);
         title.setFont(TITLE_FONT);
         title.setBorder(BorderFactory.createEmptyBorder(6, 10, 0, 10));
@@ -94,7 +138,7 @@ public class roamPanel extends JPanel {
         portraitRosterPanel.setOpaque(false);
         portraitRosterPanel.setLayout(new BoxLayout(portraitRosterPanel, BoxLayout.Y_AXIS));
         portraitRosterPanel.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
-        refreshPortraitRoster();
+        refreshPartyList();
 
         JScrollPane rosterScroll = new JScrollPane(portraitRosterPanel);
         rosterScroll.setBorder(BorderFactory.createEmptyBorder());
@@ -103,14 +147,25 @@ public class roamPanel extends JPanel {
         rosterScroll.setOpaque(false);
         leftPanel.add(rosterScroll, BorderLayout.CENTER);
 
-        JPanel buttonRow = new JPanel(new GridLayout(1, 2, 10, 0));
+        JPanel buttonRow = new JPanel(new GridLayout(1, 3, 10, 0));
         buttonRow.setOpaque(false);
         buttonRow.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
 
         JButton backpackButton = new JButton("Backpack");
         backpackButton.setFont(BUTTON_FONT);
-        backpackButton.addActionListener(e -> showBackpackDialog());
+        backpackButton.addActionListener(e -> {
+            infoMode = InfoMode.BACKPACK;
+            refreshInfoPanel();
+        });
         buttonRow.add(backpackButton);
+
+        JButton logsButton = new JButton("Logs");
+        logsButton.setFont(BUTTON_FONT);
+        logsButton.addActionListener(e -> {
+            infoMode = InfoMode.LOGS;
+            refreshInfoPanel();
+        });
+        buttonRow.add(logsButton);
 
         JButton returnButton = new JButton("Return to Res Panel");
         returnButton.setFont(BUTTON_FONT);
@@ -128,15 +183,14 @@ public class roamPanel extends JPanel {
         JPanel topRightPanel = createPanelContainer();
         topRightPanel.setLayout(new BorderLayout(12, 12));
         topRightPanel.add(createTopRightHeader(), BorderLayout.NORTH);
-        topRightPanel.add(createSelectedCharacterPanel(), BorderLayout.CENTER);
+        topRightPanel.add(createTileExplorerPanel(), BorderLayout.CENTER);
 
         JPanel bottomRightPanel = createPanelContainer();
         bottomRightPanel.setLayout(new BorderLayout(10, 10));
-        JLabel backpackTitle = new JLabel("Backpack Summary", SwingConstants.LEFT);
-        backpackTitle.setForeground(TEXT_PRIMARY);
-        backpackTitle.setFont(TITLE_FONT);
-        backpackTitle.setBorder(BorderFactory.createEmptyBorder(8, 10, 0, 10));
-        bottomRightPanel.add(backpackTitle, BorderLayout.NORTH);
+        infoPanelTitle.setForeground(TEXT_PRIMARY);
+        infoPanelTitle.setFont(TITLE_FONT);
+        infoPanelTitle.setBorder(BorderFactory.createEmptyBorder(8, 10, 0, 10));
+        bottomRightPanel.add(infoPanelTitle, BorderLayout.NORTH);
 
         backpackSummaryArea.setEditable(false);
         backpackSummaryArea.setOpaque(false);
@@ -171,13 +225,13 @@ public class roamPanel extends JPanel {
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
 
-        JLabel title = new JLabel("Character Sheet", SwingConstants.LEFT);
+        JLabel title = new JLabel("Exploration Tiles", SwingConstants.LEFT);
         title.setForeground(TEXT_PRIMARY);
         title.setFont(TITLE_FONT);
         title.setBorder(BorderFactory.createEmptyBorder(8, 10, 0, 10));
         header.add(title, BorderLayout.WEST);
 
-        JLabel subtitle = new JLabel("Top right panel", SwingConstants.RIGHT);
+        JLabel subtitle = new JLabel("Click adjacent tiles (1 step)", SwingConstants.RIGHT);
         subtitle.setForeground(TEXT_SECONDARY);
         subtitle.setFont(CARD_BODY_FONT);
         subtitle.setBorder(BorderFactory.createEmptyBorder(8, 10, 0, 10));
@@ -186,46 +240,23 @@ public class roamPanel extends JPanel {
         return header;
     }
 
-    private JPanel createSelectedCharacterPanel() {
-        JPanel panel = new JPanel(new BorderLayout(14, 14));
-        panel.setOpaque(false);
-        panel.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
-
-        selectedPortraitLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        selectedPortraitLabel.setVerticalAlignment(SwingConstants.CENTER);
-        selectedPortraitLabel.setBorder(BorderFactory.createLineBorder(PANEL_BORDER, 2));
-        panel.add(selectedPortraitLabel, BorderLayout.WEST);
-
-        JPanel textBlock = new JPanel();
-        textBlock.setOpaque(false);
-        textBlock.setLayout(new BoxLayout(textBlock, BoxLayout.Y_AXIS));
-
-        selectedNameLabel.setForeground(TEXT_PRIMARY);
-        selectedNameLabel.setFont(new Font("SansSerif", Font.BOLD, 20));
-        selectedHealthLabel.setForeground(TEXT_SECONDARY);
-        selectedHealthLabel.setFont(CARD_BODY_FONT);
-        selectedStateLabel.setForeground(TEXT_SECONDARY);
-        selectedStateLabel.setFont(CARD_BODY_FONT);
-        selectedPathLabel.setForeground(new Color(180, 180, 180));
-        selectedPathLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
-
-        textBlock.add(selectedNameLabel);
-        textBlock.add(Box.createVerticalStrut(10));
-        textBlock.add(selectedHealthLabel);
-        textBlock.add(Box.createVerticalStrut(4));
-        textBlock.add(selectedStateLabel);
-        textBlock.add(Box.createVerticalStrut(8));
-        textBlock.add(selectedPathLabel);
-
-        panel.add(textBlock, BorderLayout.CENTER);
-        return panel;
+    private JPanel createTileExplorerPanel() {
+        tileExplorerPanel.setOpaque(false);
+        tileExplorerPanel.setBorder(BorderFactory.createEmptyBorder(8, 10, 10, 10));
+        tileExplorerPanel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                handleTileClick(e.getX(), e.getY());
+            }
+        });
+        return tileExplorerPanel;
     }
 
-    private JPanel createPortraitCard(String characterId) {
+    private JPanel createPartyCard(String characterId) {
         GameData.CharacterStats stats = gameData.getCharacterStats(characterId);
         JPanel card = new JPanel(new BorderLayout(12, 0));
         card.setOpaque(true);
-        card.setBackground(selectedCharacterId.equals(characterId) ? CARD_SELECTED : CARD_FILL);
+        card.setBackground(CARD_FILL);
         card.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(PANEL_BORDER, 2),
             BorderFactory.createEmptyBorder(8, 8, 8, 8)
@@ -260,76 +291,19 @@ public class roamPanel extends JPanel {
 
         card.add(statsPanel, BorderLayout.CENTER);
 
-        MouseAdapter selectionHandler = new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                selectedCharacterId = characterId;
-                refreshSelectedCharacterDetails();
-                repaint();
-            }
-        };
-        card.addMouseListener(selectionHandler);
-        portrait.addMouseListener(selectionHandler);
-        statsPanel.addMouseListener(selectionHandler);
-        for (Component component : statsPanel.getComponents()) {
-            component.addMouseListener(selectionHandler);
-        }
-
         return card;
     }
 
-    private void refreshSelectedCharacterDetails() {
-        GameData.CharacterStats stats = gameData.getCharacterStats(selectedCharacterId);
-        selectedNameLabel.setText(formatCharacterName(selectedCharacterId));
-        selectedHealthLabel.setText(buildHealthText(stats));
-        selectedStateLabel.setText(buildStateText(stats));
-        selectedPathLabel.setText("Image: " + (stats != null ? stats.getCurrentImagePath() : "unknown"));
-        selectedPortraitLabel.setIcon(loadPortraitIcon(selectedCharacterId, 220, 220));
-
-        refreshPortraitRoster();
-    }
-
-    private void refreshPortraitRoster() {
+    private void refreshPartyList() {
         portraitRosterPanel.removeAll();
 
         for (String characterId : CHARACTER_ORDER) {
-            portraitRosterPanel.add(createPortraitCard(characterId));
+            portraitRosterPanel.add(createPartyCard(characterId));
             portraitRosterPanel.add(Box.createVerticalStrut(10));
         }
 
         portraitRosterPanel.revalidate();
         portraitRosterPanel.repaint();
-    }
-
-    private void showBackpackDialog() {
-        Window owner = SwingUtilities.getWindowAncestor(this);
-        JDialog dialog = new JDialog(owner, "Backpack", Dialog.ModalityType.APPLICATION_MODAL);
-        dialog.setUndecorated(true);
-        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-
-        JPanel content = new JPanel(new BorderLayout(12, 12));
-        content.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(PANEL_BORDER, 2),
-            BorderFactory.createEmptyBorder(14, 14, 14, 14)
-        ));
-        content.setBackground(new Color(25, 25, 25));
-
-        JLabel title = new JLabel("Backpack", SwingConstants.CENTER);
-        title.setForeground(TEXT_PRIMARY);
-        title.setFont(TITLE_FONT);
-        content.add(title, BorderLayout.NORTH);
-
-        content.add(createInventoryListPanel(), BorderLayout.CENTER);
-
-        JButton closeButton = new JButton("Close");
-        closeButton.setFont(BUTTON_FONT);
-        closeButton.addActionListener(e -> dialog.dispose());
-        content.add(closeButton, BorderLayout.SOUTH);
-
-        dialog.setContentPane(content);
-        dialog.pack();
-        dialog.setLocationRelativeTo(this);
-        dialog.setVisible(true);
     }
 
     private void loadInventoryData() {
@@ -341,6 +315,12 @@ public class roamPanel extends JPanel {
         }
 
         gameData.setInventoryItems(loadedItems);
+        inventoryCounts.clear();
+        for (GameData.InventoryEntry item : loadedItems) {
+            if (item.getQuantity() > 0) {
+                inventoryCounts.put(item.getItemId(), item.getQuantity());
+            }
+        }
     }
 
     private JPanel createInventoryListPanel() {
@@ -398,6 +378,259 @@ public class roamPanel extends JPanel {
         listPanel.add(inventoryTitle, BorderLayout.NORTH);
         listPanel.add(listScrollPane, BorderLayout.CENTER);
         return listPanel;
+    }
+
+    private void loadMapConfig() {
+        File config = new File("data/roam_tiles.csv");
+        if (!config.exists()) {
+            return;
+        }
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(config))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty() || trimmed.startsWith("#") || trimmed.equalsIgnoreCase("key,value")) {
+                    continue;
+                }
+
+                String[] parts = trimmed.split(",", 2);
+                if (parts.length < 2) {
+                    continue;
+                }
+                String key = parts[0].trim().toLowerCase();
+                String value = parts[1].trim();
+
+                switch (key) {
+                    case "rows" -> mapRows = Math.max(3, parseIntOrDefault(value, mapRows));
+                    case "cols" -> mapCols = Math.max(3, parseIntOrDefault(value, mapCols));
+                    case "start_row" -> playerRow = Math.max(0, parseIntOrDefault(value, playerRow));
+                    case "start_col" -> playerCol = Math.max(0, parseIntOrDefault(value, playerCol));
+                    case "combat_chance" -> combatChance = clamp01(parseDoubleOrDefault(value, combatChance));
+                    case "loot_chance" -> lootChance = clamp01(parseDoubleOrDefault(value, lootChance));
+                    default -> {
+                        // ignore unknown keys
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+            // Keep defaults when config is unreadable.
+        }
+
+        playerRow = Math.min(playerRow, mapRows - 1);
+        playerCol = Math.min(playerCol, mapCols - 1);
+    }
+
+    private void loadLootTable() {
+        lootTable.clear();
+        File table = new File("data/roam_loot.csv");
+        if (!table.exists()) {
+            return;
+        }
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(table))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty() || trimmed.startsWith("#") || trimmed.equalsIgnoreCase("item_id,min_qty,max_qty,weight")) {
+                    continue;
+                }
+
+                String[] parts = trimmed.split(",");
+                if (parts.length < 4) {
+                    continue;
+                }
+
+                String itemId = parts[0].trim();
+                int minQty = Math.max(1, parseIntOrDefault(parts[1].trim(), 1));
+                int maxQty = Math.max(minQty, parseIntOrDefault(parts[2].trim(), minQty));
+                int weight = Math.max(1, parseIntOrDefault(parts[3].trim(), 1));
+
+                if (!itemId.isBlank()) {
+                    lootTable.add(new LootEntry(itemId, minQty, maxQty, weight));
+                }
+            }
+        } catch (IOException ignored) {
+            // Keep empty loot table when file is unreadable.
+        }
+    }
+
+    private void initializeExplorationState() {
+        exploredTiles = new boolean[mapRows][mapCols];
+        exploredTiles[playerRow][playerCol] = true;
+        addLog("Exploration started at tile (" + (playerCol + 1) + ", " + (playerRow + 1) + ").");
+    }
+
+    private void paintTileExplorer(Graphics2D g2) {
+        int width = tileExplorerPanel.getWidth();
+        int height = tileExplorerPanel.getHeight();
+        if (width <= 0 || height <= 0 || mapCols <= 0 || mapRows <= 0) {
+            return;
+        }
+
+        int cellW = Math.max(1, width / mapCols);
+        int cellH = Math.max(1, height / mapRows);
+
+        for (int row = 0; row < mapRows; row++) {
+            for (int col = 0; col < mapCols; col++) {
+                int x = col * cellW;
+                int y = row * cellH;
+                g2.setColor(exploredTiles[row][col] ? TILE_EXPLORED : TILE_UNEXPLORED);
+                g2.fillRect(x, y, cellW, cellH);
+                g2.setColor(TILE_BORDER);
+                g2.drawRect(x, y, cellW, cellH);
+            }
+        }
+
+        int markerX = (playerCol * cellW) + (cellW / 2);
+        int markerY = (playerRow * cellH) + (cellH / 2);
+        int markerSize = Math.max(12, Math.min(cellW, cellH) / 2);
+        g2.setColor(PLAYER_MARKER);
+        g2.fillOval(markerX - markerSize / 2, markerY - markerSize / 2, markerSize, markerSize);
+        g2.setColor(new Color(70, 55, 20));
+        g2.drawOval(markerX - markerSize / 2, markerY - markerSize / 2, markerSize, markerSize);
+    }
+
+    private void handleTileClick(int mouseX, int mouseY) {
+        int width = tileExplorerPanel.getWidth();
+        int height = tileExplorerPanel.getHeight();
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+
+        int cellW = Math.max(1, width / mapCols);
+        int cellH = Math.max(1, height / mapRows);
+        int clickedCol = Math.max(0, Math.min(mapCols - 1, mouseX / cellW));
+        int clickedRow = Math.max(0, Math.min(mapRows - 1, mouseY / cellH));
+
+        int distance = Math.abs(clickedCol - playerCol) + Math.abs(clickedRow - playerRow);
+        if (distance != 1) {
+            addLog("Move blocked: you can only move one tile up/down/left/right.");
+            refreshInfoPanel();
+            return;
+        }
+
+        playerCol = clickedCol;
+        playerRow = clickedRow;
+        tileExplorerPanel.repaint();
+
+        handleTileEvent(playerRow, playerCol);
+        refreshInfoPanel();
+    }
+
+    private void handleTileEvent(int row, int col) {
+        if (exploredTiles[row][col]) {
+            addLog("Moved to explored tile (" + (col + 1) + ", " + (row + 1) + "). No new event.");
+            return;
+        }
+
+        exploredTiles[row][col] = true;
+        addLog("Entered unexplored tile (" + (col + 1) + ", " + (row + 1) + ").");
+
+        double roll = random.nextDouble();
+        if (roll < combatChance) {
+            addLog("Combat encountered. Party moved to combat panel.");
+            SwingUtilities.invokeLater(() -> main.showScreen("OMORI"));
+            return;
+        }
+
+        if (roll < combatChance + lootChance) {
+            grantRandomLoot();
+            refreshBackpackSummary();
+            return;
+        }
+
+        addLog("No loot found and no enemies encountered.");
+    }
+
+    private void grantRandomLoot() {
+        if (lootTable.isEmpty()) {
+            addLog("Loot event triggered, but loot table is empty.");
+            return;
+        }
+
+        LootEntry picked = pickWeightedLoot();
+        int qty = picked.minQty;
+        if (picked.maxQty > picked.minQty) {
+            qty += random.nextInt((picked.maxQty - picked.minQty) + 1);
+        }
+
+        inventoryCounts.merge(picked.itemId, qty, Integer::sum);
+        syncInventoryToGameData();
+        addLog("Loot found: " + formatItemNameFromId(picked.itemId) + " x" + qty + ".");
+    }
+
+    private LootEntry pickWeightedLoot() {
+        int totalWeight = 0;
+        for (LootEntry entry : lootTable) {
+            totalWeight += entry.weight;
+        }
+
+        int roll = random.nextInt(Math.max(1, totalWeight));
+        int cumulative = 0;
+        for (LootEntry entry : lootTable) {
+            cumulative += entry.weight;
+            if (roll < cumulative) {
+                return entry;
+            }
+        }
+        return lootTable.get(lootTable.size() - 1);
+    }
+
+    private void syncInventoryToGameData() {
+        List<GameData.InventoryEntry> entries = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : inventoryCounts.entrySet()) {
+            if (entry.getValue() > 0) {
+                entries.add(new GameData.InventoryEntry(entry.getKey(), entry.getValue()));
+            }
+        }
+        gameData.setInventoryItems(entries);
+    }
+
+    private void refreshInfoPanel() {
+        if (infoMode == InfoMode.LOGS) {
+            infoPanelTitle.setText("Exploration Logs");
+            StringBuilder sb = new StringBuilder();
+            if (eventLogs.isEmpty()) {
+                sb.append("No logs yet.");
+            } else {
+                for (String log : eventLogs) {
+                    sb.append("- ").append(log).append('\n');
+                }
+            }
+            backpackSummaryArea.setText(sb.toString());
+        } else {
+            infoPanelTitle.setText("Backpack Summary");
+            refreshBackpackSummary();
+        }
+        backpackSummaryArea.setCaretPosition(0);
+    }
+
+    private void addLog(String message) {
+        eventLogs.add(0, message);
+        if (eventLogs.size() > 50) {
+            eventLogs.remove(eventLogs.size() - 1);
+        }
+    }
+
+    private int parseIntOrDefault(String value, int fallback) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private double parseDoubleOrDefault(String value, double fallback) {
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private double clamp01(double value) {
+        return Math.max(0.0, Math.min(1.0, value));
     }
 
     private String formatItemNameFromId(String itemId) {
@@ -464,15 +697,15 @@ public class roamPanel extends JPanel {
     private void refreshBackpackSummary() {
         int totalItems = 0;
         StringBuilder summary = new StringBuilder();
-        for (GameData.InventoryEntry item : gameData.getInventoryItems()) {
-            if (item.getQuantity() <= 0) {
+        for (Map.Entry<String, Integer> item : inventoryCounts.entrySet()) {
+            if (item.getValue() <= 0) {
                 continue;
             }
 
-            totalItems += item.getQuantity();
-            summary.append(formatItemNameFromId(item.getItemId()))
+            totalItems += item.getValue();
+            summary.append(formatItemNameFromId(item.getKey()))
                 .append(" x")
-                .append(item.getQuantity())
+                .append(item.getValue())
                 .append('\n');
         }
 

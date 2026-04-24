@@ -383,7 +383,11 @@ public class resPanel extends JPanel {
         int drawW = panelW + (2 * MAX_PAN_X);
         int drawH = panelH + (2 * MAX_PAN_Y);
 
-        g.drawImage(backgroundImage, cameraOffsetX, cameraOffsetY, drawW, drawH, this);
+        // Anchor the enlarged background so panning never exposes white edges.
+        int backgroundDrawX = cameraOffsetX - MAX_PAN_X;
+        int backgroundDrawY = cameraOffsetY - MAX_PAN_Y;
+
+        g.drawImage(backgroundImage, backgroundDrawX, backgroundDrawY, drawW, drawH, this);
 
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setStroke(new BasicStroke(BORDER_WIDTH_THICK));
