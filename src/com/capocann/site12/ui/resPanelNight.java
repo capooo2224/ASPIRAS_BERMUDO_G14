@@ -15,7 +15,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
-public class resPanel extends JPanel {
+public class resPanelNight extends JPanel {
     // UI Dimensions
     private static final int PANEL_WIDTH = 800;
     private static final int PANEL_HEIGHT = 600;
@@ -70,7 +70,6 @@ public class resPanel extends JPanel {
     // Background
     private final Image backgroundImage = new ImageIcon("assets/res/Backgrounds/SublabDay.png").getImage();
 
-
     // Mouse tracking
     private double targetMouseX = PANEL_WIDTH / 2.0;
     private double targetMouseY = PANEL_HEIGHT / 2.0;
@@ -82,7 +81,7 @@ public class resPanel extends JPanel {
 
     // EDIT HERE: Adjust x, y, width, height for each rectangle below.
     private final Rectangle[] overlayRects = {
-        new Rectangle(158, 260, 1920, 450),
+        new Rectangle(158, 260, 370, 450),
         new Rectangle(459, 259, 370, 470),
         new Rectangle(1000, 150, 770, 1280),
         new Rectangle(759, 259, 370, 600),
@@ -92,12 +91,12 @@ public class resPanel extends JPanel {
 
     // EDIT HERE: Set image paths for each rectangle (must match the rectangles above).
     private final String[] overlayImagePaths = {
-        "assets/res/Characters/Kriegs/kriegs-AliveDay.png",
-        "assets/res/Characters/Azrael/azrael-AliveDay.png",
-        "assets/res/Characters/Gambit/gambit-AliveDay.png",
-        "assets/res/Characters/Lazarus/lazarus-AliveDay.png",
-        "assets/res/Characters/raphaela/raphaela-AliveDay.png",
-        "assets/res/Characters/terry/terry-AliveDay.png"
+        "assets/res/Characters/Kriegs/AliveKriegs.png",
+        "assets/res/Characters/Azrael/AliveAzrael.png",
+        "assets/res/Characters/Gambit/AliveGambit.png",
+        "assets/res/Characters/Lazarus/AliveLazarus.png",
+        "assets/res/Characters/Raphaela/AliveRaphaela.png",
+        "assets/res/Characters/Terry/AliveTerry.png"
     };
 
     private final GameData gameData = new GameData();
@@ -105,7 +104,7 @@ public class resPanel extends JPanel {
     private final BufferedImage[] overlayImages = loadOverlayImages();
     private int hoveredOverlayIndex = -1;
 
-    public resPanel(Main main) {
+    public resPanelNight(Main main) {
         setPreferredSize(new Dimension(PANEL_WIDTH, PANEL_HEIGHT));
         setLayout(new BorderLayout());
         loadInventoryData();
@@ -389,17 +388,18 @@ public class resPanel extends JPanel {
         g2.setStroke(new BasicStroke(BORDER_WIDTH_THICK));
         g2.setFont(SMALL_FONT);
         for (int i = 0; i < overlayRects.length; i++) {
+            Rectangle rect = getCameraShiftedRect(overlayRects[i]);
             BufferedImage img = overlayImages[i];
-            Rectangle drawRect = getFittedImageRect(i);
             if (img != null) {
+                Rectangle drawRect = getFittedImageRect(i);
                 g2.drawImage(img, drawRect.x, drawRect.y, drawRect.width, drawRect.height, this);
             } else {
                 g2.setColor(SEMI_WHITE);
-                g2.fillRect(drawRect.x, drawRect.y, drawRect.width, drawRect.height);
+                g2.fillRect(rect.x, rect.y, rect.width, rect.height);
             }
             g2.setColor(i == hoveredOverlayIndex ? HIGHLIGHT_YELLOW : Color.WHITE);
-            g2.drawRect(drawRect.x, drawRect.y, drawRect.width, drawRect.height);
-            g2.drawString("Rect " + (i + 1), drawRect.x + 8, drawRect.y + 18);
+            g2.drawRect(rect.x, rect.y, rect.width, rect.height);
+            g2.drawString("Rect " + (i + 1), rect.x + 8, rect.y + 18);
         }
         g2.dispose();
     }
@@ -425,23 +425,17 @@ public class resPanel extends JPanel {
     }
 
     private Rectangle getFittedImageRect(int index) {
+        Rectangle rect = getCameraShiftedRect(overlayRects[index]);
         BufferedImage img = overlayImages[index];
-        int panelW = getWidth();
-        int panelH = getHeight();
-
-        if (panelW <= 0 || panelH <= 0) {
-            return new Rectangle(0, 0, 0, 0);
-        }
-
         if (img == null || img.getWidth() <= 0 || img.getHeight() <= 0) {
-            return new Rectangle(getCameraOffsetX(), getCameraOffsetY(), panelW, panelH);
+            return new Rectangle(rect);
         }
 
-        double scale = Math.min((double) panelW / img.getWidth(), (double) panelH / img.getHeight());
+        double scale = Math.min((double) rect.width / img.getWidth(), (double) rect.height / img.getHeight());
         int scaledW = (int) Math.round(img.getWidth() * scale);
         int scaledH = (int) Math.round(img.getHeight() * scale);
-        int imageX = ((panelW - scaledW) / 2) + getCameraOffsetX();
-        int imageY = ((panelH - scaledH) / 2) + getCameraOffsetY();
+        int imageX = rect.x + (rect.width - scaledW) / 2;
+        int imageY = rect.y + (rect.height - scaledH) / 2;
         return new Rectangle(imageX, imageY, scaledW, scaledH);
     }
 

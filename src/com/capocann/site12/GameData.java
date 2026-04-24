@@ -1,5 +1,6 @@
 package com.capocann.site12;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -37,13 +38,62 @@ public class GameData {
             this.characterName = characterName;
             this.maxHealth = maxHealth;
             this.currentHealth = maxHealth;
-            this.aliveImagePath = "assets/res/Characters/" + capitalizeFirst(characterName) + "/Alive" + capitalizeFirst(characterName) + ".png";
-            this.almostdeadImagePath = "assets/res/Characters/" + capitalizeFirst(characterName) + "/Almostdead" + capitalizeFirst(characterName) + ".png";
+
+            String normalizedName = characterName.toLowerCase();
+            String characterFolder = getCharacterFolder(normalizedName);
+
+            String alivePrimary = "assets/res/Characters/" + characterFolder + "/" + normalizedName + "-AliveDay.png";
+            String almostdeadPrimary = "assets/res/Characters/" + characterFolder + "/" + normalizedName + "-AlmostdeadDay.png";
+
+            String legacyAlive = "assets/res/Characters/" + characterFolder + "/Alive" + capitalizeFirst(normalizedName) + ".png";
+            String legacyAlmostdead = "assets/res/Characters/" + characterFolder + "/Almostdead" + capitalizeFirst(normalizedName) + ".png";
+
+            if ("terry".equals(normalizedName)) {
+                this.aliveImagePath = resolveExistingPath(
+                    alivePrimary,
+                    "assets/res/Characters/terry/raphaela-AliveDay.png",
+                    legacyAlive
+                );
+                this.almostdeadImagePath = resolveExistingPath(
+                    almostdeadPrimary,
+                    "assets/res/Characters/terry/raphaela-AlmostdeadDay.png",
+                    legacyAlmostdead
+                );
+            } else {
+                this.aliveImagePath = resolveExistingPath(alivePrimary, legacyAlive);
+                this.almostdeadImagePath = resolveExistingPath(almostdeadPrimary, legacyAlmostdead);
+            }
         }
 
         private String capitalizeFirst(String str) {
             if (str == null || str.isEmpty()) return str;
             return str.substring(0, 1).toUpperCase() + str.substring(1).toLowerCase();
+        }
+
+        private String getCharacterFolder(String normalizedName) {
+            return switch (normalizedName) {
+                case "kriegs" -> "Kriegs";
+                case "azrael" -> "Azrael";
+                case "gambit" -> "Gambit";
+                case "lazarus" -> "Lazarus";
+                case "raphaela" -> "raphaela";
+                case "terry" -> "terry";
+                default -> capitalizeFirst(normalizedName);
+            };
+        }
+
+        private String resolveExistingPath(String primaryPath, String... fallbackPaths) {
+            if (new File(primaryPath).exists()) {
+                return primaryPath;
+            }
+
+            for (String fallback : fallbackPaths) {
+                if (fallback != null && !fallback.isBlank() && new File(fallback).exists()) {
+                    return fallback;
+                }
+            }
+
+            return primaryPath;
         }
 
         public String getCharacterName() {
