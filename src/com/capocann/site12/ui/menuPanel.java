@@ -7,7 +7,7 @@ import com.capocann.site12.Main;
 import java.awt.*;
 
 public class menuPanel extends JPanel {
-    private final Image backgroundImage = new ImageIcon("assets/Backgrounds/background.png").getImage();
+    private final Image backgroundImage = new ImageIcon("assets/res/Backgrounds/SublabNight.png").getImage();
 
     public menuPanel(Main main) {
         setPreferredSize(new Dimension(800, 600));

@@ -19,8 +19,15 @@ public class resPanel extends JPanel {
     // UI Dimensions
     private static final int PANEL_WIDTH = 800;
     private static final int PANEL_HEIGHT = 600;
-    private static final int TOP_LEFT_BUTTON_SIZE = 46;
-    private static final int TOP_LEFT_BUTTON_PADDING = 12;
+    // EDIT HERE: Change these values to resize/reposition Pause and Folder icons.
+    private static final int PAUSE_ICON_X = 0;
+    private static final int PAUSE_ICON_Y = 0;
+    private static final int PAUSE_ICON_WIDTH = 1700;
+    private static final int PAUSE_ICON_HEIGHT = 1120;
+    private static final int FOLDER_ICON_X = 80;
+    private static final int FOLDER_ICON_Y = 0;
+    private static final int FOLDER_ICON_WIDTH = 1700;
+    private static final int FOLDER_ICON_HEIGHT = 1120;
 
     // Camera
     private static final int MAX_PAN_X = 24;
@@ -46,6 +53,10 @@ public class resPanel extends JPanel {
     private static final int TIMER_DELAY = 16;
     private static final int BORDER_WIDTH = 2;
     private static final int BORDER_WIDTH_THICK = 3;
+    // EDIT HERE: Change these values to resize the DayIcon.
+    private static final int DAY_ICON_WIDTH = 850;
+    private static final int DAY_ICON_HEIGHT = 550;
+    private static final int DAY_ICON_PADDING = 0;
 
     // Dialog UI
     private static final int DIALOG_H_GAP = 0;
@@ -66,10 +77,30 @@ public class resPanel extends JPanel {
     private static final int INVENTORY_ITEM_STRUT = 8;
     private static final int INVENTORY_PADDING = 12;
     private static final int ALPHA_THRESHOLD = 10;
+    private static final int DOOR_OVERLAY_INDEX = 6;
+
+    // EDIT HERE: Per-overlay position offsets (x, y) for characters and door.
+    // Index map: 0=Kriegs, 1=Azrael, 2=Gambit, 3=Lazarus, 4=Raphaela, 5=Terry, 6=Door
+    private static final int KRIEGS_OFFSET_X = -30;
+    private static final int KRIEGS_OFFSET_Y = 0;
+    private static final int AZRAEL_OFFSET_X = -80;
+    private static final int AZRAEL_OFFSET_Y = 0;
+    private static final int GAMBIT_OFFSET_X = 100;
+    private static final int GAMBIT_OFFSET_Y = 0;
+    private static final int LAZARUS_OFFSET_X = 15;
+    private static final int LAZARUS_OFFSET_Y = 0;
+    private static final int RAPHAELA_OFFSET_X = 15;
+    private static final int RAPHAELA_OFFSET_Y = 0;
+    private static final int TERRY_OFFSET_X = -10;
+    private static final int TERRY_OFFSET_Y = 0;
+    private static final int DOOR_OFFSET_X = -35;
+    private static final int DOOR_OFFSET_Y = 0;
 
     // Background
-    private final Image backgroundImage = new ImageIcon("assets/res/Backgrounds/SublabDay.png").getImage();
-
+    private final Image backgroundImage = new ImageIcon("assets/res/Backgrounds/SublabDay-nodoor.png").getImage();
+    private final Image dayIcon = new ImageIcon("assets/res/Icons/DayIcon.png").getImage();
+    private final Image pauseIcon = new ImageIcon("assets/res/Icons/Pause.png").getImage();
+    private final Image folderIcon = new ImageIcon("assets/res/Icons/Folder.png").getImage();
 
     // Mouse tracking
     private double targetMouseX = PANEL_WIDTH / 2.0;
@@ -87,6 +118,7 @@ public class resPanel extends JPanel {
         new Rectangle(1000, 150, 770, 1280),
         new Rectangle(759, 259, 370, 600),
         new Rectangle(939, 292, 370, 600),
+        new Rectangle(1000, 285, 370, 600),
         new Rectangle(1000, 285, 370, 600)
     };
 
@@ -97,10 +129,11 @@ public class resPanel extends JPanel {
         "assets/res/Characters/Gambit/gambit-AliveDay.png",
         "assets/res/Characters/Lazarus/lazarus-AliveDay.png",
         "assets/res/Characters/raphaela/raphaela-AliveDay.png",
-        "assets/res/Characters/terry/terry-AliveDay.png"
+        "assets/res/Characters/terry/terry-AliveDay.png",
+        "assets/res/Backgrounds/Door.png"
     };
 
-    private final GameData gameData = new GameData();
+    private final GameData gameData = GameData.getInstance();
     private final String[] characterIds = {"kriegs", "azrael", "gambit", "lazarus", "raphaela", "terry"};
     private final BufferedImage[] overlayImages = loadOverlayImages();
     private int hoveredOverlayIndex = -1;
@@ -109,28 +142,6 @@ public class resPanel extends JPanel {
         setPreferredSize(new Dimension(PANEL_WIDTH, PANEL_HEIGHT));
         setLayout(new BorderLayout());
         loadInventoryData();
-
-        JPanel topLeftContainer = new JPanel(new FlowLayout(FlowLayout.LEFT, TOP_LEFT_BUTTON_PADDING, TOP_LEFT_BUTTON_PADDING));
-        topLeftContainer.setOpaque(false);
-
-        JButton lowerHpTestButton = new JButton("Lower HP Test");
-        lowerHpTestButton.setFocusPainted(false);
-        lowerHpTestButton.addActionListener(e -> {
-            lowerAllCharacterHpForTest();
-            refreshOverlayImagesFromStats();
-            repaint();
-        });
-        topLeftContainer.add(lowerHpTestButton);
-
-        JButton healHpTestButton = new JButton("Heal HP Test");
-        healHpTestButton.setFocusPainted(false);
-        healHpTestButton.addActionListener(e -> {
-            healAllCharacterHpForTest();
-            refreshOverlayImagesFromStats();
-            repaint();
-        });
-        topLeftContainer.add(healHpTestButton);
-        add(topLeftContainer, BorderLayout.NORTH);
 
         Timer cameraEaseTimer = new Timer(TIMER_DELAY, e -> {
             smoothMouseX += (targetMouseX - smoothMouseX) * CAMERA_LERP;
@@ -239,33 +250,15 @@ public class resPanel extends JPanel {
         gameData.setInventoryItems(loadedItems);
     }
 
-    private void lowerAllCharacterHpForTest() {
-        for (String characterId : characterIds) {
-            GameData.CharacterStats stats = gameData.getCharacterStats(characterId);
-            if (stats == null) {
-                continue;
-            }
-
-            int targetHealth = (int) Math.floor(stats.getMaxHealth() * 0.30);
-            stats.setCurrentHealth(targetHealth);
-        }
-    }
-
-    private void healAllCharacterHpForTest() {
-        for (String characterId : characterIds) {
-            GameData.CharacterStats stats = gameData.getCharacterStats(characterId);
-            if (stats == null) {
-                continue;
-            }
-
-            stats.setCurrentHealth(stats.getMaxHealth());
-        }
-    }
-
     private void refreshOverlayImagesFromStats() {
         BufferedImage[] refreshed = loadOverlayImages();
         int copyLen = Math.min(overlayImages.length, refreshed.length);
         System.arraycopy(refreshed, 0, overlayImages, 0, copyLen);
+    }
+
+    public void refreshFromGameState() {
+        refreshOverlayImagesFromStats();
+        repaint();
     }
 
     private JPanel createPlaceholderGrid(String labelPrefix) {
@@ -388,24 +381,80 @@ public class resPanel extends JPanel {
         int backgroundDrawY = cameraOffsetY - MAX_PAN_Y;
 
         g.drawImage(backgroundImage, backgroundDrawX, backgroundDrawY, drawW, drawH, this);
+        g.drawImage(
+            dayIcon,
+            panelW - DAY_ICON_WIDTH - DAY_ICON_PADDING,
+            DAY_ICON_PADDING,
+            DAY_ICON_WIDTH,
+            DAY_ICON_HEIGHT,
+            this
+        );
+
+        g.drawImage(pauseIcon, PAUSE_ICON_X, PAUSE_ICON_Y, PAUSE_ICON_WIDTH, PAUSE_ICON_HEIGHT, this);
+        g.drawImage(folderIcon, FOLDER_ICON_X, FOLDER_ICON_Y, FOLDER_ICON_WIDTH, FOLDER_ICON_HEIGHT, this);
 
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setStroke(new BasicStroke(BORDER_WIDTH_THICK));
         g2.setFont(SMALL_FONT);
+        // Draw door first so characters render in front of it.
+        drawOverlay(g2, DOOR_OVERLAY_INDEX);
         for (int i = 0; i < overlayRects.length; i++) {
-            BufferedImage img = overlayImages[i];
-            Rectangle drawRect = getFittedImageRect(i);
-            if (img != null) {
-                g2.drawImage(img, drawRect.x, drawRect.y, drawRect.width, drawRect.height, this);
-            } else {
-                g2.setColor(SEMI_WHITE);
-                g2.fillRect(drawRect.x, drawRect.y, drawRect.width, drawRect.height);
+            if (i == DOOR_OVERLAY_INDEX) {
+                continue;
             }
-            g2.setColor(i == hoveredOverlayIndex ? HIGHLIGHT_YELLOW : Color.WHITE);
-            g2.drawRect(drawRect.x, drawRect.y, drawRect.width, drawRect.height);
-            g2.drawString("Rect " + (i + 1), drawRect.x + 8, drawRect.y + 18);
+            drawOverlay(g2, i);
         }
         g2.dispose();
+    }
+
+    private void drawOverlay(Graphics2D g2, int index) {
+        if (index < 0 || index >= overlayRects.length || index >= overlayImages.length) {
+            return;
+        }
+
+        BufferedImage img = overlayImages[index];
+        if (img == null) {
+            return;
+        }
+
+        Rectangle drawRect = getAdjustedOverlayRect(index);
+        g2.drawImage(img, drawRect.x, drawRect.y, drawRect.width, drawRect.height, this);
+    }
+
+    private Rectangle getAdjustedOverlayRect(int index) {
+        Rectangle base = getFittedImageRect(index);
+        return new Rectangle(
+            base.x + getOverlayOffsetX(index),
+            base.y + getOverlayOffsetY(index),
+            base.width,
+            base.height
+        );
+    }
+
+    private int getOverlayOffsetX(int index) {
+        return switch (index) {
+            case 0 -> KRIEGS_OFFSET_X;
+            case 1 -> AZRAEL_OFFSET_X;
+            case 2 -> GAMBIT_OFFSET_X;
+            case 3 -> LAZARUS_OFFSET_X;
+            case 4 -> RAPHAELA_OFFSET_X;
+            case 5 -> TERRY_OFFSET_X;
+            case 6 -> DOOR_OFFSET_X;
+            default -> 0;
+        };
+    }
+
+    private int getOverlayOffsetY(int index) {
+        return switch (index) {
+            case 0 -> KRIEGS_OFFSET_Y;
+            case 1 -> AZRAEL_OFFSET_Y;
+            case 2 -> GAMBIT_OFFSET_Y;
+            case 3 -> LAZARUS_OFFSET_Y;
+            case 4 -> RAPHAELA_OFFSET_Y;
+            case 5 -> TERRY_OFFSET_Y;
+            case 6 -> DOOR_OFFSET_Y;
+            default -> 0;
+        };
     }
 
     private BufferedImage[] loadOverlayImages() {
@@ -493,7 +542,7 @@ public class resPanel extends JPanel {
             return false;
         }
 
-        Rectangle drawRect = getFittedImageRect(index);
+        Rectangle drawRect = getAdjustedOverlayRect(index);
         if (!drawRect.contains(mouseX, mouseY) || drawRect.width <= 0 || drawRect.height <= 0) {
             return false;
         }

@@ -13,6 +13,9 @@ public class Main extends JFrame {
     //switches between panels(scenes)
     private CardLayout cardLayout = new CardLayout();
     private JPanel mainContainer  = new JPanel(cardLayout);
+    private combatPanel combat;
+    private resPanel manage;
+    private roamPanel roam;
 
     public Main() {
         setTitle("Site 12");
@@ -21,9 +24,9 @@ public class Main extends JFrame {
 
         // Initialize panels
         menuPanel menu = new menuPanel(this);
-        resPanel manage = new resPanel(this);
-        combatPanel combat = new combatPanel(this);
-        roamPanel roam = new roamPanel(this);
+        manage = new resPanel(this);
+        combat = new combatPanel(this);
+        roam = new roamPanel(this);
         
 
         // Add panels to the main container
@@ -38,6 +41,15 @@ public class Main extends JFrame {
     }
 
     public void showScreen(String screenName) {
+        if ("60secs".equals(screenName) && manage != null) {
+            manage.refreshFromGameState();
+        }
+        if ("Tiles".equals(screenName) && roam != null) {
+            roam.startNewScavenge();
+        }
+        if ("OMORI".equals(screenName) && combat != null) {
+            combat.startNewEncounter();
+        }
         cardLayout.show(mainContainer, screenName);
     }
 
