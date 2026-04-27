@@ -22,12 +22,12 @@ public class resPanel extends JPanel {
     // EDIT HERE: Change these values to resize/reposition Pause and Folder icons.
     private static final int PAUSE_ICON_X = 0;
     private static final int PAUSE_ICON_Y = 0;
-    private static final int PAUSE_ICON_WIDTH = 1700;
-    private static final int PAUSE_ICON_HEIGHT = 1120;
+    private static final int PAUSE_ICON_WIDTH = 850;
+    private static final int PAUSE_ICON_HEIGHT = 550;
     private static final int FOLDER_ICON_X = 80;
     private static final int FOLDER_ICON_Y = 0;
-    private static final int FOLDER_ICON_WIDTH = 1700;
-    private static final int FOLDER_ICON_HEIGHT = 1120;
+    private static final int FOLDER_ICON_WIDTH = 850;
+    private static final int FOLDER_ICON_HEIGHT = 550;
 
     // Camera
     private static final int MAX_PAN_X = 24;
@@ -53,6 +53,11 @@ public class resPanel extends JPanel {
     private static final int TIMER_DELAY = 16;
     private static final int BORDER_WIDTH = 2;
     private static final int BORDER_WIDTH_THICK = 3;
+    private static final int PAUSE_PANEL_WIDTH = 320;
+    private static final int PAUSE_PANEL_PADDING = 24;
+    private static final int PAUSE_BUTTON_HEIGHT = 52;
+    private static final int PAUSE_BUTTON_GAP = 14;
+    private static final float PAUSE_SLIDE_SPEED = 0.12f;
     // EDIT HERE: Change these values to resize the DayIcon.
     private static final int DAY_ICON_WIDTH = 850;
     private static final int DAY_ICON_HEIGHT = 550;
@@ -134,14 +139,37 @@ public class resPanel extends JPanel {
     };
 
     private final GameData gameData = GameData.getInstance();
+    private final Main main;
     private final String[] characterIds = {"kriegs", "azrael", "gambit", "lazarus", "raphaela", "terry"};
     private final BufferedImage[] overlayImages = loadOverlayImages();
     private int hoveredOverlayIndex = -1;
 
+    private final Timer pauseSlideTimer;
+    private float pauseMenuProgress = 0f;
+    private boolean pauseMenuTargetOpen = false;
+    private Rectangle pauseIconBounds = new Rectangle();
+    private Rectangle resumeButtonBounds = new Rectangle();
+    private Rectangle newRunButtonBounds = new Rectangle();
+    private Rectangle mainMenuButtonBounds = new Rectangle();
+
     public resPanel(Main main) {
+        this.main = main;
         setPreferredSize(new Dimension(PANEL_WIDTH, PANEL_HEIGHT));
         setLayout(new BorderLayout());
         loadInventoryData();
+
+        pauseSlideTimer = new Timer(TIMER_DELAY, e -> {
+            float target = pauseMenuTargetOpen ? 1f : 0f;
+            if (pauseMenuProgress < target) {
+                pauseMenuProgress = Math.min(target, pauseMenuProgress + PAUSE_SLIDE_SPEED);
+                repaint();
+            } else if (pauseMenuProgress > target) {
+                pauseMenuProgress = Math.max(target, pauseMenuProgress - PAUSE_SLIDE_SPEED);
+                repaint();
+            } else {
+                pauseSlideTimer.stop();
+            }
+        });
 
         Timer cameraEaseTimer = new Timer(TIMER_DELAY, e -> {
             smoothMouseX += (targetMouseX - smoothMouseX) * CAMERA_LERP;
@@ -161,7 +189,12 @@ public class resPanel extends JPanel {
                 lastMouseX = e.getX();
                 lastMouseY = e.getY();
                 isMouseInsidePanel = true;
-                updateHoveredOverlay(e.getX(), e.getY());
+                if (!isPauseMenuOpen()) {
+                    updateHoveredOverlay(e.getX(), e.getY());
+                } else {
+                    hoveredOverlayIndex = -1;
+                    setCursor(Cursor.getDefaultCursor());
+                }
             }
 
             @Override
@@ -171,6 +204,29 @@ public class resPanel extends JPanel {
         });
 
         addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (pauseIconBounds.contains(e.getPoint())) {
+                    togglePauseMenu();
+                    return;
+                }
+
+                if (!isPauseMenuFullyOpen()) {
+                    return;
+                }
+
+                Point click = e.getPoint();
+                if (resumeButtonBounds.contains(click)) {
+                    closePauseMenu();
+                } else if (newRunButtonBounds.contains(click)) {
+                    closePauseMenu();
+                    main.startNewRun();
+                } else if (mainMenuButtonBounds.contains(click)) {
+                    closePauseMenu();
+                    main.showScreen("Menu");
+                }
+            }
+
             @Override
             public void mouseExited(MouseEvent e) {
                 targetMouseX = getWidth() / 2.0;
@@ -186,8 +242,41 @@ public class resPanel extends JPanel {
         add(label, BorderLayout.CENTER);
 
         JButton back = new JButton("Back to Menu");
-        back.addActionListener(e -> main.showScreen("Menu"));
+        back.addActionListener(e -> this.main.showScreen("Menu"));
         add(back, BorderLayout.SOUTH);
+    }
+
+    public void resetForNewRun() {
+        loadInventoryData();
+        refreshOverlayImagesFromStats();
+        hoveredOverlayIndex = -1;
+        pauseMenuProgress = 0f;
+        pauseMenuTargetOpen = false;
+        pauseSlideTimer.stop();
+        repaint();
+    }
+
+    private boolean isPauseMenuOpen() {
+        return pauseMenuTargetOpen || pauseMenuProgress > 0f;
+    }
+
+    private boolean isPauseMenuFullyOpen() {
+        return pauseMenuProgress >= 0.99f;
+    }
+
+    private void togglePauseMenu() {
+        pauseMenuTargetOpen = !pauseMenuTargetOpen;
+        if (!pauseSlideTimer.isRunning()) {
+            pauseSlideTimer.start();
+        }
+        repaint();
+    }
+
+    private void closePauseMenu() {
+        pauseMenuTargetOpen = false;
+        if (!pauseSlideTimer.isRunning()) {
+            pauseSlideTimer.start();
+        }
     }
 
     private void showPlaceholderUI() {
@@ -392,6 +481,7 @@ public class resPanel extends JPanel {
 
         g.drawImage(pauseIcon, PAUSE_ICON_X, PAUSE_ICON_Y, PAUSE_ICON_WIDTH, PAUSE_ICON_HEIGHT, this);
         g.drawImage(folderIcon, FOLDER_ICON_X, FOLDER_ICON_Y, FOLDER_ICON_WIDTH, FOLDER_ICON_HEIGHT, this);
+        pauseIconBounds = new Rectangle(PAUSE_ICON_X, PAUSE_ICON_Y, PAUSE_ICON_WIDTH, PAUSE_ICON_HEIGHT);
 
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setStroke(new BasicStroke(BORDER_WIDTH_THICK));
@@ -405,6 +495,56 @@ public class resPanel extends JPanel {
             drawOverlay(g2, i);
         }
         g2.dispose();
+
+        drawPauseMenu((Graphics2D) g, panelW, panelH);
+    }
+
+    private void drawPauseMenu(Graphics2D g, int panelW, int panelH) {
+        if (pauseMenuProgress <= 0f) {
+            resumeButtonBounds = new Rectangle();
+            newRunButtonBounds = new Rectangle();
+            mainMenuButtonBounds = new Rectangle();
+            return;
+        }
+
+        Graphics2D ui = (Graphics2D) g.create();
+        int overlayAlpha = (int) (120 * pauseMenuProgress);
+        ui.setColor(new Color(0, 0, 0, overlayAlpha));
+        ui.fillRect(0, 0, panelW, panelH);
+
+        int drawerX = (int) (-PAUSE_PANEL_WIDTH + (PAUSE_PANEL_WIDTH * pauseMenuProgress));
+        ui.setColor(new Color(20, 20, 20, 235));
+        ui.fillRect(drawerX, 0, PAUSE_PANEL_WIDTH, panelH);
+
+        ui.setColor(Color.WHITE);
+        ui.setFont(TITLE_FONT);
+        ui.drawString("Paused", drawerX + PAUSE_PANEL_PADDING, 56);
+
+        int buttonW = PAUSE_PANEL_WIDTH - (PAUSE_PANEL_PADDING * 2);
+        int y = 100;
+        resumeButtonBounds = new Rectangle(drawerX + PAUSE_PANEL_PADDING, y, buttonW, PAUSE_BUTTON_HEIGHT);
+        y += PAUSE_BUTTON_HEIGHT + PAUSE_BUTTON_GAP;
+        newRunButtonBounds = new Rectangle(drawerX + PAUSE_PANEL_PADDING, y, buttonW, PAUSE_BUTTON_HEIGHT);
+        y += PAUSE_BUTTON_HEIGHT + PAUSE_BUTTON_GAP;
+        mainMenuButtonBounds = new Rectangle(drawerX + PAUSE_PANEL_PADDING, y, buttonW, PAUSE_BUTTON_HEIGHT);
+
+        drawPauseButton(ui, resumeButtonBounds, "Resume");
+        drawPauseButton(ui, newRunButtonBounds, "New run");
+        drawPauseButton(ui, mainMenuButtonBounds, "Main menu");
+        ui.dispose();
+    }
+
+    private void drawPauseButton(Graphics2D g, Rectangle rect, String label) {
+        g.setColor(new Color(55, 55, 55, 245));
+        g.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
+        g.setColor(Color.WHITE);
+        g.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
+
+        FontMetrics fm = g.getFontMetrics(LABEL_FONT);
+        int textX = rect.x + ((rect.width - fm.stringWidth(label)) / 2);
+        int textY = rect.y + ((rect.height - fm.getHeight()) / 2) + fm.getAscent();
+        g.setFont(LABEL_FONT);
+        g.drawString(label, textX, textY);
     }
 
     private void drawOverlay(Graphics2D g2, int index) {
