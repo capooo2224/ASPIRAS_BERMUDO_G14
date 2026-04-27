@@ -62,10 +62,6 @@ public class Main extends JFrame {
     }
 
     public void showScreen(String screenName) {
-        if ("Menu".equals(currentScreen) && menu != null && !"Menu".equals(screenName)) {
-            menu.onMenuHidden();
-        }
-
         if ("60secs".equals(screenName) && manage != null) {
             manage.refreshFromGameState();
         }
@@ -78,10 +74,20 @@ public class Main extends JFrame {
 
         cardLayout.show(mainContainer, screenName);
         currentScreen = screenName;
+    }
 
-        if ("Menu".equals(screenName) && menu != null) {
-            menu.onMenuShown();
+    public void startNewRun() {
+        GameData.getInstance().resetForNewRun();
+        if (manage != null) {
+            manage.resetForNewRun();
         }
+        if (roam != null) {
+            roam.startNewScavenge();
+        }
+        if (combat != null) {
+            combat.startNewEncounter();
+        }
+        showScreen("60secs");
     }
 
     public static void main(String[] args) {

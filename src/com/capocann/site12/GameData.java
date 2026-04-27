@@ -377,4 +377,10 @@ public class GameData {
             }
         }
     }
+
+    public void resetForNewRun() {
+        inventoryItems.clear();
+        characterStats.clear();
+        initializeCharacters();
+    }
 }

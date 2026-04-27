@@ -144,10 +144,11 @@ public class resPanel extends JPanel {
     private final BufferedImage[] overlayImages = loadOverlayImages();
     private int hoveredOverlayIndex = -1;
 
-    private final Timer pauseSlideTimer;
+    private Timer pauseSlideTimer;
     private float pauseMenuProgress = 0f;
     private boolean pauseMenuTargetOpen = false;
     private Rectangle pauseIconBounds = new Rectangle();
+    private Rectangle folderIconBounds = new Rectangle();
     private Rectangle resumeButtonBounds = new Rectangle();
     private Rectangle newRunButtonBounds = new Rectangle();
     private Rectangle mainMenuButtonBounds = new Rectangle();
@@ -189,11 +190,12 @@ public class resPanel extends JPanel {
                 lastMouseX = e.getX();
                 lastMouseY = e.getY();
                 isMouseInsidePanel = true;
-                if (!isPauseMenuOpen()) {
-                    updateHoveredOverlay(e.getX(), e.getY());
-                } else {
+                if (isPauseMenuOpen()) {
                     hoveredOverlayIndex = -1;
-                    setCursor(Cursor.getDefaultCursor());
+                    updatePauseMenuHoverCursor(e.getX(), e.getY());
+                    repaint();
+                } else {
+                    updateHoveredOverlay(e.getX(), e.getY());
                 }
             }
 
@@ -206,24 +208,42 @@ public class resPanel extends JPanel {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (pauseIconBounds.contains(e.getPoint())) {
+                Point click = e.getPoint();
+
+                if (isPauseMenuOpen()) {
+                    if (isPauseMenuFullyOpen()) {
+                        if (resumeButtonBounds.contains(click)) {
+                            closePauseMenu();
+                            return;
+                        }
+                        if (newRunButtonBounds.contains(click)) {
+                            closePauseMenu();
+                            main.startNewRun();
+                            return;
+                        }
+                        if (mainMenuButtonBounds.contains(click)) {
+                            closePauseMenu();
+                            main.showScreen("Menu");
+                            return;
+                        }
+                    }
+
+                    if (pauseIconBounds.contains(click)) {
+                        togglePauseMenu();
+                        return;
+                    }
+
+                    closePauseMenu();
+                    return;
+                }
+
+                if (pauseIconBounds.contains(click)) {
                     togglePauseMenu();
                     return;
                 }
 
-                if (!isPauseMenuFullyOpen()) {
-                    return;
-                }
-
-                Point click = e.getPoint();
-                if (resumeButtonBounds.contains(click)) {
-                    closePauseMenu();
-                } else if (newRunButtonBounds.contains(click)) {
-                    closePauseMenu();
-                    main.startNewRun();
-                } else if (mainMenuButtonBounds.contains(click)) {
-                    closePauseMenu();
-                    main.showScreen("Menu");
+                if (folderIconBounds.contains(click)) {
+                    showPlaceholderUI();
                 }
             }
 
@@ -253,6 +273,7 @@ public class resPanel extends JPanel {
         pauseMenuProgress = 0f;
         pauseMenuTargetOpen = false;
         pauseSlideTimer.stop();
+        setCursor(Cursor.getDefaultCursor());
         repaint();
     }
 
@@ -277,6 +298,15 @@ public class resPanel extends JPanel {
         if (!pauseSlideTimer.isRunning()) {
             pauseSlideTimer.start();
         }
+    }
+
+    private void updatePauseMenuHoverCursor(int mouseX, int mouseY) {
+        boolean interactive = pauseIconBounds.contains(mouseX, mouseY)
+            || (isPauseMenuFullyOpen() &&
+                (resumeButtonBounds.contains(mouseX, mouseY)
+                    || newRunButtonBounds.contains(mouseX, mouseY)
+                    || mainMenuButtonBounds.contains(mouseX, mouseY)));
+        setCursor(interactive ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
     }
 
     private void showPlaceholderUI() {
@@ -482,6 +512,7 @@ public class resPanel extends JPanel {
         g.drawImage(pauseIcon, PAUSE_ICON_X, PAUSE_ICON_Y, PAUSE_ICON_WIDTH, PAUSE_ICON_HEIGHT, this);
         g.drawImage(folderIcon, FOLDER_ICON_X, FOLDER_ICON_Y, FOLDER_ICON_WIDTH, FOLDER_ICON_HEIGHT, this);
         pauseIconBounds = new Rectangle(PAUSE_ICON_X, PAUSE_ICON_Y, PAUSE_ICON_WIDTH, PAUSE_ICON_HEIGHT);
+        folderIconBounds = new Rectangle(FOLDER_ICON_X, FOLDER_ICON_Y, FOLDER_ICON_WIDTH, FOLDER_ICON_HEIGHT);
 
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setStroke(new BasicStroke(BORDER_WIDTH_THICK));
@@ -508,12 +539,12 @@ public class resPanel extends JPanel {
         }
 
         Graphics2D ui = (Graphics2D) g.create();
-        int overlayAlpha = (int) (120 * pauseMenuProgress);
+        int overlayAlpha = (int) (140 * pauseMenuProgress);
         ui.setColor(new Color(0, 0, 0, overlayAlpha));
         ui.fillRect(0, 0, panelW, panelH);
 
         int drawerX = (int) (-PAUSE_PANEL_WIDTH + (PAUSE_PANEL_WIDTH * pauseMenuProgress));
-        ui.setColor(new Color(20, 20, 20, 235));
+        ui.setColor(new Color(20, 20, 20, 220));
         ui.fillRect(drawerX, 0, PAUSE_PANEL_WIDTH, panelH);
 
         ui.setColor(Color.WHITE);
@@ -529,13 +560,13 @@ public class resPanel extends JPanel {
         mainMenuButtonBounds = new Rectangle(drawerX + PAUSE_PANEL_PADDING, y, buttonW, PAUSE_BUTTON_HEIGHT);
 
         drawPauseButton(ui, resumeButtonBounds, "Resume");
-        drawPauseButton(ui, newRunButtonBounds, "New run");
-        drawPauseButton(ui, mainMenuButtonBounds, "Main menu");
+        drawPauseButton(ui, newRunButtonBounds, "New Run");
+        drawPauseButton(ui, mainMenuButtonBounds, "Main Menu");
         ui.dispose();
     }
 
     private void drawPauseButton(Graphics2D g, Rectangle rect, String label) {
-        g.setColor(new Color(55, 55, 55, 245));
+        g.setColor(new Color(55, 55, 55, 235));
         g.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
         g.setColor(Color.WHITE);
         g.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
