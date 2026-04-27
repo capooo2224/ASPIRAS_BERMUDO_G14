@@ -363,7 +363,7 @@ public class roamPanel extends JPanel {
     private void refreshPartyList() {
         portraitRosterPanel.removeAll();
 
-        for (String characterId : CHARACTER_ORDER) {
+        for (String characterId : activeCharacterOrder()) {
             portraitRosterPanel.add(createPartyCard(characterId));
             portraitRosterPanel.add(Box.createVerticalStrut(10));
         }
@@ -871,7 +871,7 @@ public class roamPanel extends JPanel {
     }
 
     private void applyScavengeUpkeep(boolean unexploredTile) {
-        for (String characterId : CHARACTER_ORDER) {
+        for (String characterId : activeCharacterOrder()) {
             GameData.CharacterStats stats = gameData.getCharacterStats(characterId);
             if (stats == null || !stats.isAlive()) {
                 continue;
@@ -905,7 +905,7 @@ public class roamPanel extends JPanel {
 
     private String pickRandomLivingCharacter() {
         List<String> living = new ArrayList<>();
-        for (String characterId : CHARACTER_ORDER) {
+        for (String characterId : activeCharacterOrder()) {
             GameData.CharacterStats stats = gameData.getCharacterStats(characterId);
             if (stats != null && stats.isAlive()) {
                 living.add(characterId);
@@ -1286,7 +1286,7 @@ public class roamPanel extends JPanel {
     private GameData.CharacterStats getMostInjuredLivingCharacter() {
         GameData.CharacterStats chosen = null;
         double lowestRatio = 1.1;
-        for (String characterId : CHARACTER_ORDER) {
+        for (String characterId : activeCharacterOrder()) {
             GameData.CharacterStats stats = gameData.getCharacterStats(characterId);
             if (stats == null || !stats.isAlive()) {
                 continue;
@@ -1298,6 +1298,14 @@ public class roamPanel extends JPanel {
             }
         }
         return chosen;
+    }
+
+    private List<String> activeCharacterOrder() {
+        List<String> selected = gameData.getRoamTeamCharacterIds();
+        if (selected == null || selected.isEmpty()) {
+            return List.of(CHARACTER_ORDER);
+        }
+        return selected;
     }
 
     private boolean healMostInjuredLivingCharacter(int percent) {

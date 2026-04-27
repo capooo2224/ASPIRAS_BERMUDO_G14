@@ -30,8 +30,7 @@ public class combatPanel extends JPanel {
     private static final Dimension BATTLE_LOG_BLOCK = new Dimension(750, 250);
     private static final Dimension ACTION_BLOCK = new Dimension(750, 150);
 
-    private static final String[] ALLY_IDS = {"kriegs", "azrael", "gambit"};
-    private static final String[] SCAVENGE_ORDER = {"kriegs", "azrael", "gambit", "lazarus", "raphaela", "terry"};
+    private static final String[] DEFAULT_COMBAT_ORDER = {"kriegs", "azrael", "gambit", "lazarus", "raphaela", "terry"};
     private static final String[] ENEMY_IDS = {"enemy_raider_1", "enemy_raider_2", "enemy_raider_3"};
 
     private final Image backgroundImage = new ImageIcon("assets/Backgrounds/background.png").getImage();
@@ -319,7 +318,7 @@ public class combatPanel extends JPanel {
     private String[] buildScavengePartySlots() {
         String[] slots = new String[6];
         int next = 0;
-        for (String id : SCAVENGE_ORDER) {
+        for (String id : getCombatTeamOrder()) {
             GameData.CharacterStats stats = gameData.getCharacterStats(id);
             if (stats == null || !stats.isAlive()) {
                 continue;
@@ -556,7 +555,7 @@ public class combatPanel extends JPanel {
     }
 
     private void handleDeathsAndDots() {
-        for (String allyId : ALLY_IDS) {
+        for (String allyId : getCombatTeamOrder()) {
             GameData.CharacterStats ally = gameData.getCharacterStats(allyId);
             if (ally == null) {
                 continue;
@@ -609,7 +608,7 @@ public class combatPanel extends JPanel {
 
     private List<String> getLivingAlliesInCombatOrder() {
         List<String> living = new ArrayList<>();
-        for (String allyId : SCAVENGE_ORDER) {
+        for (String allyId : getCombatTeamOrder()) {
             GameData.CharacterStats stats = gameData.getCharacterStats(allyId);
             if (stats != null && stats.isAlive()) {
                 living.add(allyId);
@@ -631,15 +630,21 @@ public class combatPanel extends JPanel {
     }
 
     private void advanceTurnOrder() {
-        allyTurnIndex = (allyTurnIndex + 1) % ALLY_IDS.length;
+        int teamSize = Math.max(1, getCombatTeamOrder().size());
+        allyTurnIndex = (allyTurnIndex + 1) % teamSize;
     }
 
     private String getCurrentLivingAlly() {
-        for (int i = 0; i < ALLY_IDS.length; i++) {
-            String allyId = ALLY_IDS[(allyTurnIndex + i) % ALLY_IDS.length];
+        List<String> order = getCombatTeamOrder();
+        if (order.isEmpty()) {
+            return null;
+        }
+
+        for (int i = 0; i < order.size(); i++) {
+            String allyId = order.get((allyTurnIndex + i) % order.size());
             GameData.CharacterStats stats = gameData.getCharacterStats(allyId);
             if (stats != null && stats.isAlive()) {
-                allyTurnIndex = (allyTurnIndex + i) % ALLY_IDS.length;
+                allyTurnIndex = (allyTurnIndex + i) % order.size();
                 return allyId;
             }
         }
@@ -647,13 +652,40 @@ public class combatPanel extends JPanel {
     }
 
     private String getFirstLivingAlly() {
-        for (String allyId : ALLY_IDS) {
+        for (String allyId : getCombatTeamOrder()) {
             GameData.CharacterStats stats = gameData.getCharacterStats(allyId);
             if (stats != null && stats.isAlive()) {
                 return allyId;
             }
         }
         return null;
+    }
+
+    private List<String> getCombatTeamOrder() {
+        List<String> selected = gameData.getRoamTeamCharacterIds();
+        List<String> order = new ArrayList<>();
+
+        if (selected != null) {
+            for (String id : selected) {
+                if (id == null || id.isBlank()) {
+                    continue;
+                }
+                String normalized = id.toLowerCase();
+                if (gameData.getCharacterStats(normalized) != null && !order.contains(normalized)) {
+                    order.add(normalized);
+                }
+            }
+        }
+
+        if (order.isEmpty()) {
+            for (String id : DEFAULT_COMBAT_ORDER) {
+                if (gameData.getCharacterStats(id) != null) {
+                    order.add(id);
+                }
+            }
+        }
+
+        return order;
     }
 
     private String getFirstLivingEnemy() {

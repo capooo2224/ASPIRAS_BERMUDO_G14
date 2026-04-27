@@ -13,7 +13,10 @@ import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class resPanel extends JPanel {
     // UI Dimensions
@@ -100,12 +103,36 @@ public class resPanel extends JPanel {
     private static final int TERRY_OFFSET_Y = 0;
     private static final int DOOR_OFFSET_X = -35;
     private static final int DOOR_OFFSET_Y = 0;
+    // EDIT HERE: Azrael hitbox trim values (in pixels) to refine click area.
+    private static final int AZRAEL_HIT_TRIM_LEFT = 18;
+    private static final int AZRAEL_HIT_TRIM_TOP = 12;
+    private static final int AZRAEL_HIT_TRIM_RIGHT = 26;
+    private static final int AZRAEL_HIT_TRIM_BOTTOM = 14;
+
+    // EDIT HERE: Character info panel sizing and placement.
+    private static final double CHARACTER_INFO_HEIGHT_RATIO = 0.50;
+    private static final int CHARACTER_INFO_SIDE_MARGIN = 0;
+    private static final int CHARACTER_INFO_BOTTOM_MARGIN = 0;
+    private static final int CHARACTER_INFO_EXTRA_HEIGHT = 0;
+    private static final int CHARACTER_INFO_PADDING = 18;
+    private static final int CHARACTER_INFO_CORNER_RADIUS = 16;
+    private static final int CHARACTER_INFO_TOGGLE_SIZE = 18;
+    private static final float CHARACTER_INFO_SLIDE_SPEED = 0.12f;
+
+    // EDIT HERE: Left-side placeholder image block sizing inside character panel.
+    private static final int CHARACTER_PLACEHOLDER_WIDTH = 220;
+    private static final int CHARACTER_PLACEHOLDER_HEIGHT = 220;
+    private static final String CHARACTER_PLACEHOLDER_IMAGE_PATH = "assets/res/UI/character-placeholder.png";
+
+    private static final String MAP_IMAGE_PATH = "assets/res/UI/Map.png";
+    private static final String MAP_HOME_IMAGE_PATH = "assets/res/UI/home.png";
+    private static final String MAP_DOWN_IMAGE_PATH = "assets/res/UI/down.png";
 
     // Background
     private final Image backgroundImage = new ImageIcon("assets/res/Backgrounds/SublabDay-nodoor.png").getImage();
     private final Image dayIcon = new ImageIcon("assets/res/Icons/DayIcon.png").getImage();
-    private final Image pauseIcon = new ImageIcon("assets/res/Icons/Pause.png").getImage();
-    private final Image folderIcon = new ImageIcon("assets/res/Icons/Folder.png").getImage();
+    private final BufferedImage pauseIcon = loadUiImage("assets/res/Icons/Pause.png");
+    private final BufferedImage folderIcon = loadUiImage("assets/res/Icons/Folder.png");
 
     // Mouse tracking
     private double targetMouseX = PANEL_WIDTH / 2.0;
@@ -141,8 +168,11 @@ public class resPanel extends JPanel {
     private final GameData gameData = GameData.getInstance();
     private final Main main;
     private final String[] characterIds = {"kriegs", "azrael", "gambit", "lazarus", "raphaela", "terry"};
+    private final String[] roamSelectableCharacterIds = {"kriegs", "azrael", "gambit", "lazarus", "raphaela", "terry"};
     private final BufferedImage[] overlayImages = loadOverlayImages();
+    private final BufferedImage characterPlaceholderImage = loadUiImage(CHARACTER_PLACEHOLDER_IMAGE_PATH);
     private int hoveredOverlayIndex = -1;
+    private int selectedCharacterIndex = -1;
 
     private Timer pauseSlideTimer;
     private float pauseMenuProgress = 0f;
@@ -152,6 +182,13 @@ public class resPanel extends JPanel {
     private Rectangle resumeButtonBounds = new Rectangle();
     private Rectangle newRunButtonBounds = new Rectangle();
     private Rectangle mainMenuButtonBounds = new Rectangle();
+    private Timer characterInfoSlideTimer;
+    private float characterInfoSlideProgress = 0f;
+    private boolean characterInfoTargetVisible = false;
+    private Rectangle characterInfoToggleBounds = new Rectangle();
+    private Rectangle characterInfoPanelBounds = new Rectangle();
+    private String pendingTargetItemId = null;
+    private String pendingTargetItemName = null;
 
     public resPanel(Main main) {
         this.main = main;
@@ -169,6 +206,22 @@ public class resPanel extends JPanel {
                 repaint();
             } else {
                 pauseSlideTimer.stop();
+            }
+        });
+
+        characterInfoSlideTimer = new Timer(TIMER_DELAY, e -> {
+            float target = characterInfoTargetVisible ? 1f : 0f;
+            if (characterInfoSlideProgress < target) {
+                characterInfoSlideProgress = Math.min(target, characterInfoSlideProgress + CHARACTER_INFO_SLIDE_SPEED);
+                repaint();
+            } else if (characterInfoSlideProgress > target) {
+                characterInfoSlideProgress = Math.max(target, characterInfoSlideProgress - CHARACTER_INFO_SLIDE_SPEED);
+                repaint();
+            } else {
+                characterInfoSlideTimer.stop();
+                if (!characterInfoTargetVisible && characterInfoSlideProgress <= 0f) {
+                    characterInfoToggleBounds = new Rectangle();
+                }
             }
         });
 
@@ -195,6 +248,16 @@ public class resPanel extends JPanel {
                     updatePauseMenuHoverCursor(e.getX(), e.getY());
                     repaint();
                 } else {
+                    if (characterInfoSlideProgress > 0f && characterInfoPanelBounds.contains(e.getPoint())) {
+                        hoveredOverlayIndex = -1;
+                        if (characterInfoToggleBounds.contains(e.getPoint())) {
+                            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                        } else {
+                            setCursor(Cursor.getDefaultCursor());
+                        }
+                        repaint();
+                        return;
+                    }
                     updateHoveredOverlay(e.getX(), e.getY());
                 }
             }
@@ -209,6 +272,26 @@ public class resPanel extends JPanel {
             @Override
             public void mouseClicked(MouseEvent e) {
                 Point click = e.getPoint();
+
+                if (pendingTargetItemId != null) {
+                    int targetIndex = findTopCharacterHitIndex(click.x, click.y);
+                    if (targetIndex >= 0) {
+                        applyPendingItemToCharacter(targetIndex);
+                    }
+                    return;
+                }
+
+                if (characterInfoSlideProgress > 0f && characterInfoToggleBounds.contains(click)) {
+                    characterInfoTargetVisible = false;
+                    if (!characterInfoSlideTimer.isRunning()) {
+                        characterInfoSlideTimer.start();
+                    }
+                    return;
+                }
+
+                if (characterInfoSlideProgress > 0f && characterInfoPanelBounds.contains(click)) {
+                    return;
+                }
 
                 if (isPauseMenuOpen()) {
                     if (isPauseMenuFullyOpen()) {
@@ -228,7 +311,7 @@ public class resPanel extends JPanel {
                         }
                     }
 
-                    if (pauseIconBounds.contains(click)) {
+                    if (isPointOnVisibleIconPixel(pauseIcon, pauseIconBounds, click.x, click.y)) {
                         togglePauseMenu();
                         return;
                     }
@@ -237,12 +320,28 @@ public class resPanel extends JPanel {
                     return;
                 }
 
-                if (pauseIconBounds.contains(click)) {
+                if (isPointOnVisibleIconPixel(pauseIcon, pauseIconBounds, click.x, click.y)) {
                     togglePauseMenu();
                     return;
                 }
 
-                if (folderIconBounds.contains(click)) {
+                int clickedCharacter = findTopCharacterHitIndex(click.x, click.y);
+                if (clickedCharacter >= 0) {
+                    selectedCharacterIndex = clickedCharacter;
+                    characterInfoTargetVisible = true;
+                    if (!characterInfoSlideTimer.isRunning()) {
+                        characterInfoSlideTimer.start();
+                    }
+                    repaint();
+                    return;
+                }
+
+                if (isPointOnVisiblePixel(DOOR_OVERLAY_INDEX, click.x, click.y)) {
+                    showDoorMapDialog();
+                    return;
+                }
+
+                if (isPointOnVisibleIconPixel(folderIcon, folderIconBounds, click.x, click.y)) {
                     showPlaceholderUI();
                 }
             }
@@ -270,9 +369,17 @@ public class resPanel extends JPanel {
         loadInventoryData();
         refreshOverlayImagesFromStats();
         hoveredOverlayIndex = -1;
+        selectedCharacterIndex = -1;
         pauseMenuProgress = 0f;
         pauseMenuTargetOpen = false;
         pauseSlideTimer.stop();
+        characterInfoTargetVisible = false;
+        characterInfoSlideProgress = 0f;
+        characterInfoToggleBounds = new Rectangle();
+        characterInfoPanelBounds = new Rectangle();
+        pendingTargetItemId = null;
+        pendingTargetItemName = null;
+        characterInfoSlideTimer.stop();
         setCursor(Cursor.getDefaultCursor());
         repaint();
     }
@@ -301,12 +408,20 @@ public class resPanel extends JPanel {
     }
 
     private void updatePauseMenuHoverCursor(int mouseX, int mouseY) {
-        boolean interactive = pauseIconBounds.contains(mouseX, mouseY)
+        boolean interactive = isPointOnVisibleIconPixel(pauseIcon, pauseIconBounds, mouseX, mouseY)
             || (isPauseMenuFullyOpen() &&
                 (resumeButtonBounds.contains(mouseX, mouseY)
                     || newRunButtonBounds.contains(mouseX, mouseY)
                     || mainMenuButtonBounds.contains(mouseX, mouseY)));
         setCursor(interactive ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
+    }
+
+    private BufferedImage loadUiImage(String path) {
+        try {
+            return ImageIO.read(new File(path));
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     private void showPlaceholderUI() {
@@ -322,7 +437,7 @@ public class resPanel extends JPanel {
         ));
         dialogContent.setBackground(DARK_GRAY);
 
-        JLabel title = new JLabel("Placeholder UI", SwingConstants.CENTER);
+        JLabel title = new JLabel("Inventory", SwingConstants.CENTER);
         title.setForeground(Color.WHITE);
         title.setFont(DIALOG_TITLE_FONT);
         dialogContent.add(title, BorderLayout.NORTH);
@@ -330,23 +445,7 @@ public class resPanel extends JPanel {
         JPanel bodyPanel = new JPanel(new BorderLayout(0, 10));
         bodyPanel.setOpaque(false);
 
-        CardLayout cardLayout = new CardLayout();
-        JPanel cardPanel = new JPanel(cardLayout);
-        cardPanel.setOpaque(false);
-        cardPanel.add(createPlaceholderGrid("Tab 1 - Rectangle "), "tab1");
-        cardPanel.add(createInventoryListPanel(), "tab2");
-
-        JPanel tabButtons = new JPanel(new FlowLayout(FlowLayout.CENTER, DIALOG_BUTTON_GAP, 0));
-        tabButtons.setOpaque(false);
-        JButton tab1Button = new JButton("Tab 1");
-        JButton tab2Button = new JButton("Tab 2");
-        tab1Button.addActionListener(e -> cardLayout.show(cardPanel, "tab1"));
-        tab2Button.addActionListener(e -> cardLayout.show(cardPanel, "tab2"));
-        tabButtons.add(tab1Button);
-        tabButtons.add(tab2Button);
-
-        bodyPanel.add(tabButtons, BorderLayout.NORTH);
-        bodyPanel.add(cardPanel, BorderLayout.CENTER);
+        bodyPanel.add(createInventoryListPanel(placeholderDialog), BorderLayout.CENTER);
         dialogContent.add(bodyPanel, BorderLayout.CENTER);
 
         JButton closeButton = new JButton("Close");
@@ -357,6 +456,225 @@ public class resPanel extends JPanel {
         placeholderDialog.pack();
         placeholderDialog.setLocationRelativeTo(this);
         placeholderDialog.setVisible(true);
+    }
+
+    private void showDoorMapDialog() {
+        BufferedImage mapImage;
+        BufferedImage homeImage;
+        BufferedImage downImage;
+        try {
+            mapImage = ImageIO.read(new File(MAP_IMAGE_PATH));
+            homeImage = ImageIO.read(new File(MAP_HOME_IMAGE_PATH));
+            downImage = ImageIO.read(new File(MAP_DOWN_IMAGE_PATH));
+        } catch (IOException ex) {
+            return;
+        }
+
+        if (mapImage == null || homeImage == null || downImage == null) {
+            return;
+        }
+
+        Window owner = SwingUtilities.getWindowAncestor(this);
+        JDialog mapDialog = new JDialog(owner, Dialog.ModalityType.APPLICATION_MODAL);
+        mapDialog.setUndecorated(true);
+        mapDialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        mapDialog.setBackground(new Color(0, 0, 0, 0));
+
+        class MapOverlayPanel extends JPanel {
+            private Rectangle mapBounds = new Rectangle();
+            private Rectangle homeBounds = new Rectangle();
+            private Rectangle downBounds = new Rectangle();
+
+            MapOverlayPanel() {
+                setOpaque(false);
+
+                addMouseMotionListener(new MouseAdapter() {
+                    @Override
+                    public void mouseMoved(MouseEvent e) {
+                        if (isPointOnVisibleImagePixel(homeImage, homeBounds, e.getX(), e.getY())
+                                || isPointOnVisibleImagePixel(downImage, downBounds, e.getX(), e.getY())
+                                || !isPointOnVisibleMapPixel(e.getX(), e.getY())) {
+                            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                        } else {
+                            setCursor(Cursor.getDefaultCursor());
+                        }
+                    }
+                });
+
+                addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        if (isPointOnVisibleImagePixel(homeImage, homeBounds, e.getX(), e.getY())) {
+                            mapDialog.dispose();
+                            return;
+                        }
+
+                        if (isPointOnVisibleImagePixel(downImage, downBounds, e.getX(), e.getY())) {
+                            showRoamTeamSelectionDialog(mapDialog);
+                            return;
+                        }
+
+                        if (!isPointOnVisibleMapPixel(e.getX(), e.getY())) {
+                            mapDialog.dispose();
+                        }
+                    }
+                });
+            }
+
+            private boolean isPointOnVisibleMapPixel(int x, int y) {
+                if (!mapBounds.contains(x, y) || mapBounds.width <= 0 || mapBounds.height <= 0) {
+                    return false;
+                }
+
+                double normX = (x - mapBounds.x) / (double) mapBounds.width;
+                double normY = (y - mapBounds.y) / (double) mapBounds.height;
+                int srcX = Math.min(mapImage.getWidth() - 1, Math.max(0, (int) (normX * mapImage.getWidth())));
+                int srcY = Math.min(mapImage.getHeight() - 1, Math.max(0, (int) (normY * mapImage.getHeight())));
+                int alpha = (mapImage.getRGB(srcX, srcY) >>> 24) & 0xFF;
+                return alpha > ALPHA_THRESHOLD;
+            }
+
+            private boolean isPointOnVisibleImagePixel(BufferedImage image, Rectangle drawRect, int x, int y) {
+                if (image == null || drawRect == null || drawRect.width <= 0 || drawRect.height <= 0) {
+                    return false;
+                }
+                if (!drawRect.contains(x, y)) {
+                    return false;
+                }
+
+                double normX = (x - drawRect.x) / (double) drawRect.width;
+                double normY = (y - drawRect.y) / (double) drawRect.height;
+                int srcX = Math.min(image.getWidth() - 1, Math.max(0, (int) (normX * image.getWidth())));
+                int srcY = Math.min(image.getHeight() - 1, Math.max(0, (int) (normY * image.getHeight())));
+                int alpha = (image.getRGB(srcX, srcY) >>> 24) & 0xFF;
+                return alpha > ALPHA_THRESHOLD;
+            }
+
+            @Override
+            protected void paintComponent(Graphics g) {
+                int panelW = getWidth();
+                int panelH = getHeight();
+
+                double mapScale = Math.min((double) panelW / mapImage.getWidth(), (double) panelH / mapImage.getHeight());
+                int mapW = (int) Math.round(mapImage.getWidth() * mapScale);
+                int mapH = (int) Math.round(mapImage.getHeight() * mapScale);
+                int mapX = (panelW - mapW) / 2;
+                int mapY = (panelH - mapH) / 2;
+                mapBounds = new Rectangle(mapX, mapY, mapW, mapH);
+                g.drawImage(mapImage, mapX, mapY, mapW, mapH, null);
+
+                int homeW = Math.max(1, (int) Math.round(homeImage.getWidth() * mapScale));
+                int homeH = Math.max(1, (int) Math.round(homeImage.getHeight() * mapScale));
+                int homeX = mapX + mapW - homeW - 24;
+                int homeY = mapY + 24;
+                homeBounds = new Rectangle(homeX, homeY, homeW, homeH);
+                g.drawImage(homeImage, homeX, homeY, homeW, homeH, null);
+
+                int downW = Math.max(1, (int) Math.round(downImage.getWidth() * mapScale));
+                int downH = Math.max(1, (int) Math.round(downImage.getHeight() * mapScale));
+                int downX = mapX + ((mapW - downW) / 2);
+                int downY = mapY + mapH - downH - 24;
+                downBounds = new Rectangle(downX, downY, downW, downH);
+                g.drawImage(downImage, downX, downY, downW, downH, null);
+            }
+        }
+
+        MapOverlayPanel content = new MapOverlayPanel();
+        mapDialog.setContentPane(content);
+        mapDialog.getContentPane().setBackground(new Color(0, 0, 0, 0));
+        mapDialog.setSize(Math.max(1, getWidth()), Math.max(1, getHeight()));
+        mapDialog.setLocationRelativeTo(this);
+        mapDialog.setVisible(true);
+    }
+
+    private void showRoamTeamSelectionDialog(JDialog mapDialog) {
+        Window owner = SwingUtilities.getWindowAncestor(this);
+        JDialog teamDialog = new JDialog(owner, "Select Team", Dialog.ModalityType.APPLICATION_MODAL);
+        teamDialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+
+        JPanel root = new JPanel(new BorderLayout(10, 10));
+        root.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
+        root.setBackground(DARK_GRAY);
+
+        JLabel title = new JLabel("Select Characters for Roam Team", SwingConstants.LEFT);
+        title.setForeground(Color.WHITE);
+        title.setFont(DIALOG_TITLE_FONT);
+        root.add(title, BorderLayout.NORTH);
+
+        List<String> selectedDefaults = gameData.getRoamTeamCharacterIds();
+        Map<String, JCheckBox> checkboxes = new LinkedHashMap<>();
+
+        JPanel options = new JPanel();
+        options.setOpaque(false);
+        options.setLayout(new BoxLayout(options, BoxLayout.Y_AXIS));
+        for (String id : roamSelectableCharacterIds) {
+            JCheckBox box = new JCheckBox(formatCharacterName(id));
+            box.setOpaque(false);
+            box.setForeground(Color.WHITE);
+            box.setSelected(selectedDefaults.contains(id));
+            checkboxes.put(id, box);
+            options.add(box);
+            options.add(Box.createVerticalStrut(6));
+        }
+        root.add(options, BorderLayout.CENTER);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        actions.setOpaque(false);
+
+        JButton cancel = new JButton("Cancel");
+        cancel.addActionListener(e -> teamDialog.dispose());
+
+        JButton confirm = new JButton("Confirm");
+        confirm.addActionListener(e -> {
+            List<String> selected = new ArrayList<>();
+            for (Map.Entry<String, JCheckBox> entry : checkboxes.entrySet()) {
+                if (entry.getValue().isSelected()) {
+                    selected.add(entry.getKey());
+                }
+            }
+
+            if (selected.isEmpty()) {
+                JOptionPane.showMessageDialog(
+                    teamDialog,
+                    "Select at least one character.",
+                    "Team Required",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                return;
+            }
+
+            gameData.setRoamTeamCharacterIds(selected);
+            teamDialog.dispose();
+            if (mapDialog != null) {
+                mapDialog.dispose();
+            }
+            main.showScreen("Tiles");
+        });
+
+        actions.add(cancel);
+        actions.add(confirm);
+        root.add(actions, BorderLayout.SOUTH);
+
+        teamDialog.setContentPane(root);
+        teamDialog.pack();
+        teamDialog.setLocationRelativeTo(this);
+        teamDialog.setVisible(true);
+    }
+
+    private String formatCharacterName(String characterId) {
+        if (characterId == null || characterId.isBlank()) {
+            return "Unknown";
+        }
+
+        return switch (characterId.toLowerCase()) {
+            case "kriegs" -> "Kriegs";
+            case "azrael" -> "Azrael";
+            case "gambit" -> "Gambit";
+            case "lazarus" -> "Lazarus";
+            case "raphaela" -> "Raphaela";
+            case "terry" -> "Terry";
+            default -> Character.toUpperCase(characterId.charAt(0)) + characterId.substring(1);
+        };
     }
 
     private void loadInventoryData() {
@@ -398,7 +716,7 @@ public class resPanel extends JPanel {
         return grid;
     }
 
-    private JPanel createInventoryListPanel() {
+    private JPanel createInventoryListPanel(JDialog ownerDialog) {
         JPanel listPanel = new JPanel(new BorderLayout(8, 8));
         listPanel.setOpaque(false);
 
@@ -415,7 +733,7 @@ public class resPanel extends JPanel {
                 continue;
             }
 
-            JPanel itemCard = new JPanel(new BorderLayout());
+            JPanel itemCard = new JPanel(new BorderLayout(8, 0));
             itemCard.setBackground(MEDIUM_GRAY);
             itemCard.setBorder(BorderFactory.createLineBorder(BORDER_GRAY, BORDER_WIDTH));
             itemCard.setPreferredSize(new Dimension(INVENTORY_CARD_WIDTH, INVENTORY_CARD_HEIGHT));
@@ -431,7 +749,21 @@ public class resPanel extends JPanel {
             quantityLabel.setForeground(LIGHT_GRAY);
             quantityLabel.setFont(LABEL_FONT);
             quantityLabel.setBorder(BorderFactory.createEmptyBorder(0, INVENTORY_PADDING, 0, INVENTORY_PADDING));
-            itemCard.add(quantityLabel, BorderLayout.EAST);
+
+            JPanel rightActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+            rightActions.setOpaque(false);
+            rightActions.add(quantityLabel);
+            JButton useButton = new JButton("Use");
+            useButton.addActionListener(e -> {
+                pendingTargetItemId = item.getItemId();
+                pendingTargetItemName = formatItemNameFromId(item.getItemId());
+                if (ownerDialog != null) {
+                    ownerDialog.dispose();
+                }
+                repaint();
+            });
+            rightActions.add(useButton);
+            itemCard.add(rightActions, BorderLayout.EAST);
 
             itemsContainer.add(itemCard);
             itemsContainer.add(Box.createVerticalStrut(INVENTORY_ITEM_STRUT));
@@ -509,8 +841,12 @@ public class resPanel extends JPanel {
             this
         );
 
-        g.drawImage(pauseIcon, PAUSE_ICON_X, PAUSE_ICON_Y, PAUSE_ICON_WIDTH, PAUSE_ICON_HEIGHT, this);
-        g.drawImage(folderIcon, FOLDER_ICON_X, FOLDER_ICON_Y, FOLDER_ICON_WIDTH, FOLDER_ICON_HEIGHT, this);
+        if (pauseIcon != null) {
+            g.drawImage(pauseIcon, PAUSE_ICON_X, PAUSE_ICON_Y, PAUSE_ICON_WIDTH, PAUSE_ICON_HEIGHT, this);
+        }
+        if (folderIcon != null) {
+            g.drawImage(folderIcon, FOLDER_ICON_X, FOLDER_ICON_Y, FOLDER_ICON_WIDTH, FOLDER_ICON_HEIGHT, this);
+        }
         pauseIconBounds = new Rectangle(PAUSE_ICON_X, PAUSE_ICON_Y, PAUSE_ICON_WIDTH, PAUSE_ICON_HEIGHT);
         folderIconBounds = new Rectangle(FOLDER_ICON_X, FOLDER_ICON_Y, FOLDER_ICON_WIDTH, FOLDER_ICON_HEIGHT);
 
@@ -527,7 +863,247 @@ public class resPanel extends JPanel {
         }
         g2.dispose();
 
+        drawCharacterInfoPanel((Graphics2D) g, panelW, panelH);
         drawPauseMenu((Graphics2D) g, panelW, panelH);
+        drawPendingTargetPrompt((Graphics2D) g, panelW, panelH);
+    }
+
+    private void drawPendingTargetPrompt(Graphics2D g, int panelW, int panelH) {
+        if (pendingTargetItemId == null) {
+            return;
+        }
+
+        Graphics2D ui = (Graphics2D) g.create();
+        ui.setColor(new Color(0, 0, 0, 140));
+        ui.fillRect(0, 0, panelW, panelH);
+
+        String text = "Click on who to use";
+        ui.setFont(new Font("SansSerif", Font.BOLD, 44));
+        FontMetrics fm = ui.getFontMetrics();
+        int textX = (panelW - fm.stringWidth(text)) / 2;
+        int textY = (panelH / 2) - 12;
+
+        ui.setColor(new Color(20, 20, 20, 220));
+        ui.fillRoundRect(textX - 24, textY - fm.getAscent() - 18, fm.stringWidth(text) + 48, fm.getHeight() + 32, 18, 18);
+        ui.setColor(Color.WHITE);
+        ui.drawString(text, textX, textY);
+
+        if (pendingTargetItemName != null) {
+            String itemText = "Item: " + pendingTargetItemName;
+            ui.setFont(new Font("SansSerif", Font.BOLD, 20));
+            FontMetrics itemFm = ui.getFontMetrics();
+            int ix = (panelW - itemFm.stringWidth(itemText)) / 2;
+            ui.drawString(itemText, ix, textY + 36);
+        }
+
+        ui.dispose();
+    }
+
+    private void applyPendingItemToCharacter(int targetIndex) {
+        if (pendingTargetItemId == null || targetIndex < 0 || targetIndex >= characterIds.length) {
+            return;
+        }
+
+        String itemId = pendingTargetItemId;
+        String targetId = characterIds[targetIndex];
+        GameData.CharacterStats target = gameData.getCharacterStats(targetId);
+        if (target == null) {
+            pendingTargetItemId = null;
+            pendingTargetItemName = null;
+            repaint();
+            return;
+        }
+
+        if (!consumeInventoryItem(itemId, 1)) {
+            pendingTargetItemId = null;
+            pendingTargetItemName = null;
+            repaint();
+            return;
+        }
+
+        applyItemEffectToCharacter(itemId, target);
+        refreshOverlayImagesFromStats();
+        pendingTargetItemId = null;
+        pendingTargetItemName = null;
+        repaint();
+    }
+
+    private boolean consumeInventoryItem(String itemId, int amount) {
+        if (itemId == null || itemId.isBlank() || amount <= 0) {
+            return false;
+        }
+
+        List<GameData.InventoryEntry> updated = new ArrayList<>();
+        boolean consumed = false;
+
+        for (GameData.InventoryEntry entry : gameData.getInventoryItems()) {
+            if (entry.getItemId().equalsIgnoreCase(itemId) && !consumed) {
+                int nextQty = entry.getQuantity() - amount;
+                consumed = entry.getQuantity() >= amount;
+                if (consumed && nextQty > 0) {
+                    updated.add(new GameData.InventoryEntry(entry.getItemId(), nextQty));
+                } else if (!consumed) {
+                    updated.add(new GameData.InventoryEntry(entry.getItemId(), entry.getQuantity()));
+                }
+            } else {
+                updated.add(new GameData.InventoryEntry(entry.getItemId(), entry.getQuantity()));
+            }
+        }
+
+        if (consumed) {
+            gameData.setInventoryItems(updated);
+        }
+        return consumed;
+    }
+
+    private void applyItemEffectToCharacter(String itemId, GameData.CharacterStats target) {
+        String key = itemId == null ? "" : itemId.toLowerCase();
+
+        if (key.contains("bandage")) {
+            healByPercent(target, 20);
+            return;
+        }
+        if (key.contains("medkit")) {
+            healByPercent(target, 35);
+            return;
+        }
+        if (key.contains("tourniquet")) {
+            healByPercent(target, 12);
+            target.clearStatus(GameData.StatusEffect.BLEED);
+            return;
+        }
+        if (key.contains("who_knows_what") || key.contains("who_knows_what_s_inside")) {
+            target.heal(target.getMaxHealth());
+            return;
+        }
+        if (key.contains("unknown_contents")) {
+            damageByPercent(target, 35);
+            return;
+        }
+        if (key.contains("questionable_contents")) {
+            target.setCurrentSanity(target.getCurrentSanity() - 3);
+            return;
+        }
+        if (key.contains("apple")) {
+            target.setCurrentHunger(target.getCurrentHunger() + 10);
+            target.setCurrentThirst(target.getCurrentThirst() + 15);
+            target.setCurrentSanity(target.getCurrentSanity() + 1);
+            return;
+        }
+        if (key.contains("water_bottle") || key.contains("soda")) {
+            target.setCurrentThirst(target.getCurrentThirst() + 30);
+            return;
+        }
+        if (key.contains("sanity_pill")) {
+            target.setCurrentSanity(target.getCurrentSanity() + 4);
+            return;
+        }
+        if (key.contains("vodka")) {
+            target.setCurrentThirst(target.getCurrentThirst() - 5);
+            target.setCurrentSanity(target.getMaxSanity());
+            target.clearStatus(GameData.StatusEffect.MORALE);
+            return;
+        }
+        if (key.contains("trauma_kit")) {
+            target.heal(target.getMaxHealth());
+            target.clearStatus(GameData.StatusEffect.BLEED);
+            target.clearStatus(GameData.StatusEffect.CRIPPLE);
+            target.clearStatus(GameData.StatusEffect.FIRE);
+            target.clearStatus(GameData.StatusEffect.MORALE);
+        }
+    }
+
+    private void healByPercent(GameData.CharacterStats target, int percent) {
+        int amount = Math.max(1, (int) Math.round(target.getMaxHealth() * (percent / 100.0)));
+        target.heal(amount);
+    }
+
+    private void damageByPercent(GameData.CharacterStats target, int percent) {
+        int amount = Math.max(1, (int) Math.round(target.getMaxHealth() * (percent / 100.0)));
+        target.takeDamage(amount);
+    }
+
+    private void drawCharacterInfoPanel(Graphics2D g, int panelW, int panelH) {
+        if ((selectedCharacterIndex < 0 || selectedCharacterIndex >= characterIds.length)
+            && characterInfoSlideProgress <= 0f) {
+            characterInfoToggleBounds = new Rectangle();
+            characterInfoPanelBounds = new Rectangle();
+            return;
+        }
+
+        Graphics2D ui = (Graphics2D) g.create();
+        int panelHeight = (int) Math.round((panelH * CHARACTER_INFO_HEIGHT_RATIO) + CHARACTER_INFO_EXTRA_HEIGHT);
+        panelHeight = Math.max(120, Math.min(panelH, panelHeight));
+
+        int x = CHARACTER_INFO_SIDE_MARGIN;
+        int visibleY = panelH - panelHeight - CHARACTER_INFO_BOTTOM_MARGIN;
+        int hiddenY = panelH + CHARACTER_INFO_BOTTOM_MARGIN;
+        int y = (int) Math.round(hiddenY - ((hiddenY - visibleY) * characterInfoSlideProgress));
+        int width = Math.max(1, panelW - (CHARACTER_INFO_SIDE_MARGIN * 2));
+        characterInfoPanelBounds = new Rectangle(x, y, width, panelHeight);
+
+        ui.setColor(new Color(15, 15, 15, 218));
+        ui.fillRoundRect(x, y, width, panelHeight, CHARACTER_INFO_CORNER_RADIUS, CHARACTER_INFO_CORNER_RADIUS);
+        ui.setColor(new Color(200, 200, 200, 190));
+        ui.setStroke(new BasicStroke(2f));
+        ui.drawRoundRect(x, y, width, panelHeight, CHARACTER_INFO_CORNER_RADIUS, CHARACTER_INFO_CORNER_RADIUS);
+
+        int triX = x + (width / 2);
+        int triTopY = y + 8;
+        Polygon triangle = new Polygon(
+            new int[] {triX - CHARACTER_INFO_TOGGLE_SIZE / 2, triX + CHARACTER_INFO_TOGGLE_SIZE / 2, triX},
+            new int[] {triTopY, triTopY, triTopY + CHARACTER_INFO_TOGGLE_SIZE},
+            3
+        );
+        ui.setColor(new Color(245, 245, 245, 220));
+        ui.fillPolygon(triangle);
+        characterInfoToggleBounds = new Rectangle(
+            triX - CHARACTER_INFO_TOGGLE_SIZE / 2,
+            triTopY,
+            CHARACTER_INFO_TOGGLE_SIZE,
+            CHARACTER_INFO_TOGGLE_SIZE
+        );
+
+        int placeX = x + CHARACTER_INFO_PADDING;
+        int placeY = y + CHARACTER_INFO_PADDING + 12;
+        int placeW = Math.min(CHARACTER_PLACEHOLDER_WIDTH, Math.max(80, width / 3));
+        int placeH = Math.min(CHARACTER_PLACEHOLDER_HEIGHT, panelHeight - (CHARACTER_INFO_PADDING * 2));
+
+        if (characterPlaceholderImage != null) {
+            ui.drawImage(characterPlaceholderImage, placeX, placeY, placeW, placeH, null);
+        } else {
+            ui.setColor(new Color(50, 50, 50, 220));
+            ui.fillRect(placeX, placeY, placeW, placeH);
+            ui.setColor(new Color(210, 210, 210, 210));
+            ui.drawRect(placeX, placeY, placeW, placeH);
+            ui.setFont(LABEL_FONT);
+            ui.drawString("Image Placeholder", placeX + 16, placeY + 26);
+        }
+
+        int textX = placeX + placeW + 18;
+        int textY = placeY + 38;
+        String name = formatCharacterName(characterIds[selectedCharacterIndex]);
+        GameData.CharacterStats stats = gameData.getCharacterStats(characterIds[selectedCharacterIndex]);
+
+        ui.setColor(Color.WHITE);
+        ui.setFont(new Font("SansSerif", Font.BOLD, 28));
+        ui.drawString(name, textX, textY);
+
+        ui.setFont(new Font("SansSerif", Font.PLAIN, 16));
+        int lineY = textY + 34;
+        if (stats != null) {
+            ui.drawString("Health: " + stats.getCurrentHealth() + " / " + stats.getMaxHealth(), textX, lineY);
+            lineY += 24;
+            ui.drawString("Thirst: " + stats.getCurrentThirst() + " / " + stats.getMaxThirst(), textX, lineY);
+            lineY += 24;
+            ui.drawString("Hunger: " + stats.getCurrentHunger() + " / " + stats.getMaxHunger(), textX, lineY);
+            lineY += 24;
+            ui.drawString("Sanity: " + stats.getCurrentSanity() + " / " + stats.getMaxSanity(), textX, lineY);
+        } else {
+            ui.drawString("Character data unavailable.", textX, lineY);
+        }
+
+        ui.dispose();
     }
 
     private void drawPauseMenu(Graphics2D g, int panelW, int panelH) {
@@ -692,12 +1268,9 @@ public class resPanel extends JPanel {
     }
 
     private void updateHoveredOverlay(int mouseX, int mouseY) {
-        int hitIndex = -1;
-        for (int i = 0; i < overlayImages.length; i++) {
-            if (isPointOnVisiblePixel(i, mouseX, mouseY)) {
-                hitIndex = i;
-                break;
-            }
+        int hitIndex = findTopCharacterHitIndex(mouseX, mouseY);
+        if (hitIndex < 0 && isPointOnVisiblePixel(DOOR_OVERLAY_INDEX, mouseX, mouseY)) {
+            hitIndex = DOOR_OVERLAY_INDEX;
         }
 
         if (hitIndex != hoveredOverlayIndex) {
@@ -707,6 +1280,15 @@ public class resPanel extends JPanel {
         }
     }
 
+    private int findTopCharacterHitIndex(int mouseX, int mouseY) {
+        for (int i = characterIds.length - 1; i >= 0; i--) {
+            if (isPointOnVisiblePixel(i, mouseX, mouseY)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private boolean isPointOnVisiblePixel(int index, int mouseX, int mouseY) {
         BufferedImage img = overlayImages[index];
         if (img == null || img.getWidth() <= 0 || img.getHeight() <= 0) {
@@ -714,7 +1296,16 @@ public class resPanel extends JPanel {
         }
 
         Rectangle drawRect = getAdjustedOverlayRect(index);
-        if (!drawRect.contains(mouseX, mouseY) || drawRect.width <= 0 || drawRect.height <= 0) {
+        Rectangle hitRect = drawRect;
+        if (index == 1) {
+            int trimW = AZRAEL_HIT_TRIM_LEFT + AZRAEL_HIT_TRIM_RIGHT;
+            int trimH = AZRAEL_HIT_TRIM_TOP + AZRAEL_HIT_TRIM_BOTTOM;
+            int newW = Math.max(1, drawRect.width - trimW);
+            int newH = Math.max(1, drawRect.height - trimH);
+            hitRect = new Rectangle(drawRect.x + AZRAEL_HIT_TRIM_LEFT, drawRect.y + AZRAEL_HIT_TRIM_TOP, newW, newH);
+        }
+
+        if (!hitRect.contains(mouseX, mouseY) || drawRect.width <= 0 || drawRect.height <= 0) {
             return false;
         }
 
@@ -723,6 +1314,22 @@ public class resPanel extends JPanel {
         int srcX = Math.min(img.getWidth() - 1, Math.max(0, (int) (normX * img.getWidth())));
         int srcY = Math.min(img.getHeight() - 1, Math.max(0, (int) (normY * img.getHeight())));
         int alpha = (img.getRGB(srcX, srcY) >>> 24) & 0xFF;
+        return alpha > ALPHA_THRESHOLD;
+    }
+
+    private boolean isPointOnVisibleIconPixel(BufferedImage icon, Rectangle drawRect, int mouseX, int mouseY) {
+        if (icon == null || drawRect == null || drawRect.width <= 0 || drawRect.height <= 0) {
+            return false;
+        }
+        if (!drawRect.contains(mouseX, mouseY)) {
+            return false;
+        }
+
+        double normX = (mouseX - drawRect.x) / (double) drawRect.width;
+        double normY = (mouseY - drawRect.y) / (double) drawRect.height;
+        int srcX = Math.min(icon.getWidth() - 1, Math.max(0, (int) (normX * icon.getWidth())));
+        int srcY = Math.min(icon.getHeight() - 1, Math.max(0, (int) (normY * icon.getHeight())));
+        int alpha = (icon.getRGB(srcX, srcY) >>> 24) & 0xFF;
         return alpha > ALPHA_THRESHOLD;
     }
 }

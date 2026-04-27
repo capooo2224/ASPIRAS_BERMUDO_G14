@@ -9,6 +9,10 @@ import java.util.List;
 import java.util.Map;
 
 public class GameData {
+    private static final List<String> DEFAULT_ROAM_TEAM = List.of(
+        "kriegs", "azrael", "gambit", "lazarus", "raphaela", "terry"
+    );
+
     // TUNING LABELS: adjust these globally as needed.
     public static final int BASE_MAX_THIRST = 100;
     public static final int BASE_MAX_HUNGER = 100;
@@ -280,6 +284,7 @@ public class GameData {
 
     private final List<InventoryEntry> inventoryItems = new ArrayList<>();
     private final Map<String, CharacterStats> characterStats = new HashMap<>();
+    private final List<String> roamTeamCharacterIds = new ArrayList<>();
 
     public GameData() {
         this(false);
@@ -288,6 +293,7 @@ public class GameData {
     private GameData(boolean singletonInit) {
         // Initialize default characters
         initializeCharacters();
+        roamTeamCharacterIds.addAll(DEFAULT_ROAM_TEAM);
     }
 
     private void initializeCharacters() {
@@ -339,6 +345,35 @@ public class GameData {
         characterStats.put(characterName.toLowerCase(), stats);
     }
 
+    public List<String> getRoamTeamCharacterIds() {
+        if (roamTeamCharacterIds.isEmpty()) {
+            return DEFAULT_ROAM_TEAM;
+        }
+        return Collections.unmodifiableList(roamTeamCharacterIds);
+    }
+
+    public void setRoamTeamCharacterIds(List<String> characterIds) {
+        roamTeamCharacterIds.clear();
+        if (characterIds == null) {
+            roamTeamCharacterIds.addAll(DEFAULT_ROAM_TEAM);
+            return;
+        }
+
+        for (String id : characterIds) {
+            if (id == null || id.isBlank()) {
+                continue;
+            }
+            String normalized = id.toLowerCase();
+            if (characterStats.containsKey(normalized) && !roamTeamCharacterIds.contains(normalized)) {
+                roamTeamCharacterIds.add(normalized);
+            }
+        }
+
+        if (roamTeamCharacterIds.isEmpty()) {
+            roamTeamCharacterIds.addAll(DEFAULT_ROAM_TEAM);
+        }
+    }
+
     public boolean reduceCharacterSanity(String characterName, int amount, boolean whileScavenging) {
         CharacterStats stats = getCharacterStats(characterName);
         if (stats == null || amount <= 0) {
@@ -382,5 +417,7 @@ public class GameData {
         inventoryItems.clear();
         characterStats.clear();
         initializeCharacters();
+        roamTeamCharacterIds.clear();
+        roamTeamCharacterIds.addAll(DEFAULT_ROAM_TEAM);
     }
 }
