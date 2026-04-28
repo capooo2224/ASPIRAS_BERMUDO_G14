@@ -5,6 +5,7 @@ import javax.imageio.ImageIO;
 
 import com.capocann.site12.GameData;
 import com.capocann.site12.Main;
+import com.capocann.site12.tactical.TacticalCSVLoader;
 import com.capocann.site12.tactical.TacticalManager;
 
 import java.awt.*;
@@ -20,9 +21,9 @@ import java.util.Map;
 import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import com.capocann.site12.tactical.TacticalCSVLoader;
 
 public class combatPanel extends JPanel {
+    private TacticalManager tacticalManager;
     private static final String LABEL_BATTLE_LOG = "Battle Text";
     private static final String LABEL_ATTACK_BUTTON = "Attack";
     private static final String LABEL_RUN_BUTTON = "Run";
@@ -33,7 +34,7 @@ public class combatPanel extends JPanel {
     private static final Dimension ACTION_BLOCK = new Dimension(750, 150);
 
     private static final String[] DEFAULT_COMBAT_ORDER = {"kriegs", "azrael", "gambit", "lazarus", "raphaela", "terry"};
-    private static final String[] ENEMY_IDS = {"enemy_raider_1", "enemy_raider_2", "enemy_raider_3"};
+    private static final int ENEMY_SLOT_COUNT = 3;
 
     private final Image backgroundImage = new ImageIcon("assets/Backgrounds/background.png").getImage();
     private final Main main;
@@ -52,11 +53,33 @@ public class combatPanel extends JPanel {
     private List<MoveDef> attackOverlayMoves = List.of();
     private List<String> attackOverlayActors = List.of();
     private String pendingMoveActorId;
+    private MoveDef pendingSelectedMove;
     private final Map<String, GameData.CharacterStats> enemyStats = new HashMap<>();
+    private final List<String> enemyIds = new ArrayList<>();
+    private final Map<String, String> enemyDisplayNames = new HashMap<>();
+    private final Map<String, String> enemyTraits = new HashMap<>();
     private final Map<String, List<MoveDef>> movesByCharacter = new HashMap<>();
     private final Map<String, Integer> moveCooldowns = new HashMap<>();
     private int allyTurnIndex = 0;
-    private TacticalManager tacticalManager;
+    private int enemyTurnIndex = 0;
+    private int currentRound = 1;
+    
+    private enum CombatPhase { ALLY_TURN, ENEMY_TURN }
+    private CombatPhase currentPhase = CombatPhase.ALLY_TURN;
+
+    private static class EnemyDef {
+        private final String id;
+        private final String name;
+        private final int hp;
+        private final String traits;
+
+        private EnemyDef(String id, String name, int hp, String traits) {
+            this.id = id;
+            this.name = name;
+            this.hp = hp;
+            this.traits = traits;
+        }
+    }
 
     private static class MoveDef {
         private final String moveName;
@@ -81,7 +104,7 @@ public class combatPanel extends JPanel {
         setLayout(new GridBagLayout());
 
         initializeEnemyRoster();
-        loadMovesFromCsv();
+        loadMovesFromTxt();
         tacticalManager = new TacticalManager(gameData, enemyStats);
 
         allyPanel.setOpaque(false);
@@ -270,8 +293,49 @@ public class combatPanel extends JPanel {
     }
 
     private void initializeEnemyRoster() {
-        for (String enemyId : ENEMY_IDS) {
-            enemyStats.put(enemyId, new GameData.CharacterStats(enemyId, 140));
+        enemyIds.clear();
+        enemyDisplayNames.clear();
+        enemyStats.clear();
+
+        File dataDir = new File("data");
+        File enemyFile = TacticalCSVLoader.findDataFile(dataDir, "new_enemies.csv", "enemies.csv");
+        if (enemyFile == null) {
+            enemyFile = new File("new_enemies.csv");
+        }
+
+        if (enemyFile != null && enemyFile.exists()) {
+            try {
+                List<Map<String, String>> rows = TacticalCSVLoader.loadCsv(enemyFile);
+                int slotIndex = 1;
+                for (Map<String, String> row : rows) {
+                    if (enemyIds.size() >= ENEMY_SLOT_COUNT) {
+                        break;
+                    }
+
+                    String name = row.getOrDefault("Name", "Enemy " + slotIndex).trim();
+                    String hpText = row.getOrDefault("HP", "100").trim();
+                    String traits = row.getOrDefault("Traits", "").trim();
+                    int hp = parseIntOrDefault(hpText, 100);
+                    String id = "enemy_" + slotIndex;
+
+                    enemyIds.add(id);
+                    enemyDisplayNames.put(id, name);
+                    enemyTraits.put(id, traits);
+                    enemyStats.put(id, new GameData.CharacterStats(id, hp));
+                    slotIndex++;
+                }
+            } catch (IOException ignored) {
+                // Fall through to defaults.
+            }
+        }
+
+        while (enemyIds.size() < ENEMY_SLOT_COUNT) {
+            int slotIndex = enemyIds.size() + 1;
+            String id = "enemy_" + slotIndex;
+            enemyIds.add(id);
+            enemyDisplayNames.put(id, "Enemy " + slotIndex);
+            enemyTraits.put(id, "");
+            enemyStats.put(id, new GameData.CharacterStats(id, 140));
         }
     }
 
@@ -291,9 +355,15 @@ public class combatPanel extends JPanel {
             reserveAllyPanel.add(createAllySlotCard(allyId));
         }
 
-        for (int i = 0; i < enemyTrianglePortraits.length && i < ENEMY_IDS.length; i++) {
-            enemyTrianglePortraits[i].setIcon(loadPortraitIcon(ENEMY_IDS[i], 96, 96));
-            enemyTrianglePortraits[i].setText("<html><center><b>" + formatName(ENEMY_IDS[i]) + "</b></center></html>");
+        for (int i = 0; i < enemyTrianglePortraits.length && i < enemyIds.size(); i++) {
+            String enemyId = enemyIds.get(i);
+            enemyTrianglePortraits[i].setIcon(loadPortraitIcon(enemyId, 96, 96));
+            
+            GameData.CharacterStats enemyStats_i = enemyStats.get(enemyId);
+            int hp = enemyStats_i == null ? 0 : enemyStats_i.getCurrentHealth();
+            int maxHp = enemyStats_i == null ? 1 : Math.max(1, enemyStats_i.getMaxHealth());
+            
+            enemyTrianglePortraits[i].setText("<html><center><b>" + formatName(enemyId) + "</b><br/>HP: " + hp + "/" + maxHp + "</center></html>");
             enemyTrianglePortraits[i].setForeground(Color.WHITE);
         }
 
@@ -359,14 +429,26 @@ public class combatPanel extends JPanel {
     }
 
     private void onAttackPressed() {
-        List<String> livingAllies = getLivingAlliesInCombatOrder();
-        if (livingAllies.isEmpty()) {
+        if (currentPhase != CombatPhase.ALLY_TURN) {
+            appendBattleLog("Not an ally's turn.");
+            return;
+        }
+        
+        String currentActor = getCurrentLivingAlly();
+        if (currentActor == null) {
             appendBattleLog("All allies are down. Returning to exploration.");
             main.showScreen("Tiles");
             return;
         }
 
-        showActorSelectionOverlay(livingAllies);
+        List<MoveDef> moveList = movesByCharacter.getOrDefault(currentActor, List.of());
+        if (moveList.isEmpty()) {
+            appendBattleLog(formatName(currentActor) + " has no loaded moves. Using basic attack.");
+            executeMove(currentActor, new MoveDef("Basic Strike", "Fallback attack", 1, 0, null));
+            return;
+        }
+
+        showAttackOverlay(currentActor, moveList);
     }
 
     private JPanel createAttackOverlayPanel() {
@@ -397,7 +479,7 @@ public class combatPanel extends JPanel {
 
         JButton cancel = new JButton("Back");
         cancel.setFont(new Font("SansSerif", Font.BOLD, 16));
-        cancel.addActionListener(e -> hideAttackOverlay());
+        cancel.addActionListener(e -> cancelAttackOverlay());
 
         controls.add(confirm);
         controls.add(cancel);
@@ -407,6 +489,7 @@ public class combatPanel extends JPanel {
 
     private void showAttackOverlay(String actorId, List<MoveDef> moveList) {
         pendingMoveActorId = actorId;
+        pendingSelectedMove = null;
         attackOverlayActors = List.of();
         attackOverlayMoves = moveList;
         attackOverlayListModel.clear();
@@ -414,6 +497,26 @@ public class combatPanel extends JPanel {
             attackOverlayListModel.addElement(move.moveName + " - " + move.description);
         }
         if (!moveList.isEmpty()) {
+            attackOverlayList.setSelectedIndex(0);
+        }
+        actionCardLayout.show(actionCardHost, "overlay");
+    }
+
+    private void showEnemyTargetOverlay(String actorId, MoveDef move) {
+        pendingMoveActorId = actorId;
+        pendingSelectedMove = move;
+        attackOverlayMoves = List.of();
+        attackOverlayActors = getLivingEnemyIds();
+        attackOverlayListModel.clear();
+
+        for (String enemyId : attackOverlayActors) {
+            GameData.CharacterStats stats = enemyStats.get(enemyId);
+            int hp = stats == null ? 0 : stats.getCurrentHealth();
+            int max = stats == null ? 1 : Math.max(1, stats.getMaxHealth());
+            attackOverlayListModel.addElement(formatName(enemyId) + "  (HP " + hp + "/" + max + ")");
+        }
+
+        if (!attackOverlayActors.isEmpty()) {
             attackOverlayList.setSelectedIndex(0);
         }
         actionCardLayout.show(actionCardHost, "overlay");
@@ -441,9 +544,18 @@ public class combatPanel extends JPanel {
     private void hideAttackOverlay() {
         actionCardLayout.show(actionCardHost, "buttons");
         pendingMoveActorId = null;
+        pendingSelectedMove = null;
         attackOverlayMoves = List.of();
         attackOverlayActors = List.of();
         attackOverlayListModel.clear();
+    }
+
+    private void cancelAttackOverlay() {
+        if (pendingSelectedMove != null && pendingMoveActorId != null) {
+            showAttackOverlay(pendingMoveActorId, movesByCharacter.getOrDefault(pendingMoveActorId, List.of()));
+            return;
+        }
+        hideAttackOverlay();
     }
 
     private void confirmAttackOverlayMove() {
@@ -454,30 +566,35 @@ public class combatPanel extends JPanel {
         }
 
         if (pendingMoveActorId == null) {
-            if (selected >= attackOverlayActors.size()) {
-                appendBattleLog("Choose a character first.");
-                return;
-            }
-
-            String actorId = attackOverlayActors.get(selected);
-            List<MoveDef> moveList = movesByCharacter.getOrDefault(actorId, List.of());
-            if (moveList.isEmpty()) {
-                appendBattleLog(formatName(actorId) + " has no loaded moves. Using basic attack.");
-                executeMove(actorId, new MoveDef("Basic Strike", "Fallback attack", 1, 0, null));
-                hideAttackOverlay();
-                return;
-            }
-
-            showAttackOverlay(actorId, moveList);
+            appendBattleLog("No active attacker.");
             return;
         }
 
-        if (selected >= attackOverlayMoves.size()) {
-            appendBattleLog("Choose a move first.");
+        if (pendingSelectedMove == null) {
+            if (selected >= attackOverlayMoves.size()) {
+                appendBattleLog("Choose a move first.");
+                return;
+            }
+
+            MoveDef chosen = attackOverlayMoves.get(selected);
+            String cooldownKey = pendingMoveActorId + ":" + chosen.moveName;
+            int remainingCd = moveCooldowns.getOrDefault(cooldownKey, 0);
+            if (remainingCd > 0) {
+                appendBattleLog(chosen.moveName + " is on cooldown for " + remainingCd + " more turn(s).");
+                return;
+            }
+
+            showEnemyTargetOverlay(pendingMoveActorId, chosen);
             return;
         }
 
-        MoveDef chosen = attackOverlayMoves.get(selected);
+        if (selected >= attackOverlayActors.size()) {
+            appendBattleLog("Choose a target first.");
+            return;
+        }
+
+        String enemyId = attackOverlayActors.get(selected);
+        MoveDef chosen = pendingSelectedMove;
         String cooldownKey = pendingMoveActorId + ":" + chosen.moveName;
         int remainingCd = moveCooldowns.getOrDefault(cooldownKey, 0);
         if (remainingCd > 0) {
@@ -485,7 +602,7 @@ public class combatPanel extends JPanel {
             return;
         }
 
-        executeMove(pendingMoveActorId, chosen);
+        executeMove(pendingMoveActorId, chosen, enemyId);
         if (chosen.cooldown > 0) {
             moveCooldowns.put(cooldownKey, chosen.cooldown);
         }
@@ -494,27 +611,70 @@ public class combatPanel extends JPanel {
 
     private void executeMove(String actorId, MoveDef move) {
         String enemyId = getFirstLivingEnemy();
-        if (enemyId == null) {
+        executeMove(actorId, move, enemyId);
+    }
+
+    private void executeMove(String actorId, MoveDef move, String enemyId) {
+        GameData.CharacterStats actor = gameData.getCharacterStats(actorId);
+        if (actor == null || enemyId == null) {
             appendBattleLog("No valid target found.");
             return;
         }
 
-        TacticalManager.TacticalResult tr = tacticalManager.applyMove(actorId, enemyId, move);
+        GameData.CharacterStats target = enemyStats.get(enemyId);
+        double damageMultiplier = move.hitMultiplier;
+        if (actor.getStatusStacks(GameData.StatusEffect.FIRE) > 0) {
+            damageMultiplier *= 1.0 + (GameData.FIRE_DAMAGE_BOOST_PERCENT / 100.0);
+        }
+        damageMultiplier *= actor.getMoraleMultiplier();
+
+        int damage = Math.max(1, (int) Math.round(BASE_DAMAGE * damageMultiplier));
+        target.takeDamage(damage);
         appendBattleLog(formatName(actorId) + " used " + move.moveName + " on " + formatName(enemyId)
-                + " for " + tr.totalDamage + " damage.");
+                + " for " + damage + " damage.");
 
         if (move.appliesStatus != null) {
-            GameData.CharacterStats target = enemyStats.get(enemyId);
-            if (target != null) {
-                target.addStatusStacks(move.appliesStatus, 1);
-                appendBattleLog(formatName(enemyId) + " gained " + move.appliesStatus + ".");
-            }
+            target.addStatusStacks(move.appliesStatus, 1);
+            appendBattleLog(formatName(enemyId) + " gained " + move.appliesStatus + ".");
         }
 
         handleDeathsAndDots();
-        performEnemyTurn();
+        
+        // Apply cooldown BEFORE advancing turn
+        if (move.cooldown > 0) {
+            String cooldownKey = actorId + ":" + move.moveName;
+            moveCooldowns.put(cooldownKey, move.cooldown);
+        }
+        
+        // Try to advance to next living ally
+        String nextAlly = getNextLivingAlly();
+        if (nextAlly != null && !nextAlly.isEmpty()) {
+            // There are more allies, continue with their turn
+            tickCooldowns();
+            refreshBattlePanels();
+            appendBattleLog("\n" + formatName(nextAlly) + "'s turn.");
+        } else {
+            // All allies have gone, start enemy turns
+            currentPhase = CombatPhase.ENEMY_TURN;
+            appendBattleLog("\n========== Enemy Phase ==========");
+            performAllEnemyTurns();
+            
+            // After all enemies attack, check if battle is over
+            if (allAlliesDefeated()) {
+                appendBattleLog("All allies have been defeated!");
+                main.showScreen("Tiles");
+                return;
+            }
+            
+            // Move to next round
+            currentRound++;
+            currentPhase = CombatPhase.ALLY_TURN;
+            allyTurnIndex = 0;
+            enemyTurnIndex = 0;
+            appendBattleLog("\n========== Round " + currentRound + " - Ally Phase ==========");
+        }
+        
         tickCooldowns();
-        advanceTurnOrder();
         refreshBattlePanels();
 
         if (allEnemiesDefeated()) {
@@ -524,9 +684,20 @@ public class combatPanel extends JPanel {
         }
     }
 
+    private List<String> getLivingEnemyIds() {
+        List<String> living = new ArrayList<>();
+        for (String enemyId : enemyIds) {
+            GameData.CharacterStats stats = enemyStats.get(enemyId);
+            if (stats != null && stats.isAlive()) {
+                living.add(enemyId);
+            }
+        }
+        return living;
+    }
+
     private void performEnemyTurn() {
         String enemyId = pickEnemyByCrippleOrder();
-        String allyId = getFirstLivingAlly();
+        String allyId = chooseSmartEnemyTargetId(enemyId);
         if (enemyId == null || allyId == null) {
             return;
         }
@@ -537,19 +708,55 @@ public class combatPanel extends JPanel {
             return;
         }
 
-        int damage = Math.max(1, (int) Math.round(10 * enemy.getMoraleMultiplier()));
-        if (enemy.getStatusStacks(GameData.StatusEffect.FIRE) > 0) {
-            damage = Math.max(1, (int) Math.round(damage * 1.1));
-        }
-
-        ally.takeDamage(damage);
-        appendBattleLog(formatName(enemyId) + " attacks " + formatName(allyId) + " for " + damage + " damage.");
+        MoveDef enemyMove = buildEnemyMove(enemyId, ally);
+        TacticalManager.TacticalResult result = tacticalManager.applyMove(enemyId, allyId, enemyMove);
+        appendBattleLog(formatName(enemyId) + " attacks " + formatName(allyId) + " for " + result.totalDamage + " damage.");
         if (!ally.isAlive()) {
             gameData.handleCharacterDeath(allyId);
             appendBattleLog(formatName(allyId) + " was defeated. Morale penalty applied.");
         }
 
         handleDeathsAndDots();
+    }
+
+    private void performAllEnemyTurns() {
+        for (String enemyId : enemyIds) {
+            GameData.CharacterStats enemy = enemyStats.get(enemyId);
+            if (enemy == null || !enemy.isAlive()) {
+                continue;
+            }
+
+            String targetAllyId = chooseSmartEnemyTargetId(enemyId);
+            if (targetAllyId == null) {
+                appendBattleLog("All allies defeated!");
+                return;
+            }
+
+            GameData.CharacterStats targetAlly = gameData.getCharacterStats(targetAllyId);
+            if (targetAlly == null) {
+                continue;
+            }
+
+            MoveDef enemyMove = buildEnemyMove(enemyId, targetAlly);
+            TacticalManager.TacticalResult result = tacticalManager.applyMove(enemyId, targetAllyId, enemyMove);
+            appendBattleLog("  " + formatName(enemyId) + " uses " + enemyMove.moveName + " on " + formatName(targetAllyId) + " for " + result.totalDamage + " damage.");
+            
+            if (!targetAlly.isAlive()) {
+                gameData.handleCharacterDeath(targetAllyId);
+                appendBattleLog("  >> " + formatName(targetAllyId) + " was defeated!");
+            } else {
+                int remainingHp = targetAlly.getCurrentHealth();
+                int maxHp = targetAlly.getMaxHealth();
+                appendBattleLog("  >> " + formatName(targetAllyId) + " now has " + remainingHp + "/" + maxHp + " HP");
+            }
+
+            handleDeathsAndDots();
+        }
+
+        if (allAlliesDefeated()) {
+            appendBattleLog("\nAll allies have been defeated. Returning to exploration.");
+            main.showScreen("Tiles");
+        }
     }
 
     private void handleDeathsAndDots() {
@@ -568,7 +775,7 @@ public class combatPanel extends JPanel {
             }
         }
 
-        for (String enemyId : ENEMY_IDS) {
+        for (String enemyId : enemyIds) {
             GameData.CharacterStats enemy = enemyStats.get(enemyId);
             if (enemy == null || !enemy.isAlive()) {
                 continue;
@@ -586,10 +793,37 @@ public class combatPanel extends JPanel {
             appendBattleLog("Run attempt succeeded (50/50). Returning to exploration.");
             main.showScreen("Tiles");
         } else {
-            appendBattleLog("Run failed. Turn passed.");
-            performEnemyTurn();
+            appendBattleLog("Run failed. Skipping turn.");
+            
+            // Try to advance to next living ally
+            String nextAlly = getNextLivingAlly();
+            if (nextAlly != null && !nextAlly.isEmpty()) {
+                // There are more allies, continue with their turn
+                tickCooldowns();
+                refreshBattlePanels();
+                appendBattleLog("\n" + formatName(nextAlly) + "'s turn.");
+            } else {
+                // All allies have gone, start enemy turns
+                currentPhase = CombatPhase.ENEMY_TURN;
+                appendBattleLog("\n========== Enemy Phase ==========");
+                performAllEnemyTurns();
+                
+                // After all enemies attack, check if battle is over
+                if (allAlliesDefeated()) {
+                    appendBattleLog("All allies have been defeated!");
+                    main.showScreen("Tiles");
+                    return;
+                }
+                
+                // Move to next round
+                currentRound++;
+                currentPhase = CombatPhase.ALLY_TURN;
+                allyTurnIndex = 0;
+                enemyTurnIndex = 0;
+                appendBattleLog("\n========== Round " + currentRound + " - Ally Phase ==========");
+            }
+            
             tickCooldowns();
-            advanceTurnOrder();
             refreshBattlePanels();
         }
     }
@@ -598,10 +832,14 @@ public class combatPanel extends JPanel {
         initializeEnemyRoster();
         moveCooldowns.clear();
         allyTurnIndex = 0;
+        enemyTurnIndex = 0;
+        currentRound = 1;
+        currentPhase = CombatPhase.ALLY_TURN;
         hideAttackOverlay();
         battleLogArea.setText("");
         refreshBattlePanels();
-        appendBattleLog("Combat started. " + getCurrentActorDisplayName() + " takes the first action.");
+        appendBattleLog("========== Round " + currentRound + " - Ally Phase ==========");
+        appendBattleLog(getCurrentActorDisplayName() + " takes the first action.");
     }
 
     private List<String> getLivingAlliesInCombatOrder() {
@@ -630,6 +868,25 @@ public class combatPanel extends JPanel {
     private void advanceTurnOrder() {
         int teamSize = Math.max(1, getCombatTeamOrder().size());
         allyTurnIndex = (allyTurnIndex + 1) % teamSize;
+    }
+
+    private String getNextLivingAlly() {
+        List<String> order = getCombatTeamOrder();
+        if (order.isEmpty()) {
+            return null;
+        }
+
+        // Look for the next living ally starting from allyTurnIndex + 1, only going forward (no wrapping)
+        for (int i = allyTurnIndex + 1; i < order.size(); i++) {
+            String allyId = order.get(i);
+            GameData.CharacterStats stats = gameData.getCharacterStats(allyId);
+            if (stats != null && stats.isAlive()) {
+                allyTurnIndex = i;
+                return allyId;
+            }
+        }
+        // No more allies remaining in this round
+        return null;
     }
 
     private String getCurrentLivingAlly() {
@@ -687,7 +944,7 @@ public class combatPanel extends JPanel {
     }
 
     private String getFirstLivingEnemy() {
-        for (String enemyId : ENEMY_IDS) {
+        for (String enemyId : enemyIds) {
             GameData.CharacterStats stats = enemyStats.get(enemyId);
             if (stats != null && stats.isAlive()) {
                 return enemyId;
@@ -698,7 +955,7 @@ public class combatPanel extends JPanel {
 
     private String pickEnemyByCrippleOrder() {
         String crippledCandidate = null;
-        for (String enemyId : ENEMY_IDS) {
+        for (String enemyId : enemyIds) {
             GameData.CharacterStats stats = enemyStats.get(enemyId);
             if (stats == null || !stats.isAlive()) {
                 continue;
@@ -714,9 +971,98 @@ public class combatPanel extends JPanel {
         return crippledCandidate;
     }
 
+    private String chooseSmartEnemyTargetId(String enemyId) {
+        List<String> livingAllies = getLivingAlliesInCombatOrder();
+        if (livingAllies.isEmpty()) {
+            return null;
+        }
+
+        boolean fearFocused = false;
+        String traits = enemyTraits.getOrDefault(enemyId, "").toLowerCase();
+        if (traits.contains("dread") || traits.contains("fear")) {
+            fearFocused = true;
+        }
+
+        String bestTarget = null;
+        int bestScore = Integer.MIN_VALUE;
+
+        for (String allyId : livingAllies) {
+            GameData.CharacterStats stats = gameData.getCharacterStats(allyId);
+            if (stats == null || !stats.isAlive()) {
+                continue;
+            }
+
+            int hp = stats.getCurrentHealth();
+            int maxHp = Math.max(1, stats.getMaxHealth());
+            int hpMissing = maxHp - hp;
+            int hpPercent = (int) Math.round((hp * 100.0) / maxHp);
+            int score = hpMissing * 4 + (100 - hpPercent) * 2;
+            score += stats.getStatusStacks(GameData.StatusEffect.BLEED) * 12;
+            score += stats.getStatusStacks(GameData.StatusEffect.FIRE) * 10;
+            score += stats.getStatusStacks(GameData.StatusEffect.MORALE) * 6;
+            if (stats.isAlmostDead()) {
+                score += 50;
+            }
+            if (fearFocused) {
+                score += Math.max(0, 20 - stats.getCurrentSanity());
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestTarget = allyId;
+            }
+        }
+
+        return bestTarget;
+    }
+
+    private MoveDef buildEnemyMove(String enemyId, GameData.CharacterStats targetStats) {
+        String traits = enemyTraits.getOrDefault(enemyId, "").toLowerCase();
+        int hits = 1;
+        GameData.StatusEffect appliesStatus = null;
+        String moveName = "Basic Strike";
+        String description = "Enemy basic attack";
+
+        if (targetStats != null && targetStats.getHealthPercentage() <= 35) {
+            hits = 2;
+            moveName = "Focused Strike";
+            description = "Finisher against weakened targets";
+        }
+
+        if (traits.contains("burn")) {
+            appliesStatus = GameData.StatusEffect.FIRE;
+            moveName = "Scorching Strike";
+            description = "Applies burning pressure";
+        } else if (traits.contains("dread") || traits.contains("fear")) {
+            appliesStatus = GameData.StatusEffect.MORALE;
+            moveName = "Dread Assault";
+            description = "Applies morale pressure";
+        } else if (traits.contains("bleed")) {
+            appliesStatus = GameData.StatusEffect.BLEED;
+            moveName = "Rending Strike";
+            description = "Applies bleed pressure";
+        }
+
+        if (traits.contains("stalker") || traits.contains("evasion")) {
+            hits = Math.max(hits, 2);
+        }
+
+        return new MoveDef(moveName, description, hits, 0, appliesStatus);
+    }
+
     private boolean allEnemiesDefeated() {
-        for (String enemyId : ENEMY_IDS) {
+        for (String enemyId : enemyIds) {
             GameData.CharacterStats stats = enemyStats.get(enemyId);
+            if (stats != null && stats.isAlive()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean allAlliesDefeated() {
+        for (String allyId : getCombatTeamOrder()) {
+            GameData.CharacterStats stats = gameData.getCharacterStats(allyId);
             if (stats != null && stats.isAlive()) {
                 return false;
             }
@@ -734,49 +1080,54 @@ public class combatPanel extends JPanel {
         return actorId == null ? "No one" : formatName(actorId);
     }
 
-    private void loadMovesFromCsv() {
-        movesByCharacter.clear();
-        try {
-            File dataDir = new File("data");
-            File movesFile = TacticalCSVLoader.findDataFile(dataDir, "new_moves.csv", "moves.csv");
-            if (movesFile == null) {
-                System.err.println("No moves CSV found; loading fallback from moves.txt");
-                loadMovesFromTxt();
-                return;
-            }
-
-            List<Map<String,String>> rows = TacticalCSVLoader.loadCsv(movesFile);
-            for (Map<String,String> row : rows) {
-                String character = row.getOrDefault("Character", "").trim().toLowerCase();
-                String moveName = row.getOrDefault("Move_Name", "").trim();
-                String damageTypeStr = row.getOrDefault("Damage_Type", "Physical").trim().toLowerCase();
-                String hitsStr = row.getOrDefault("Hits", "1").trim();
-                String cooldownStr = row.getOrDefault("Cooldown", "0").trim();
-
-                if (character.isEmpty() || moveName.isEmpty()) continue;
-
-                int hits = parseIntOrDefault(hitsStr, 1);
-                int cooldown = parseIntOrDefault(cooldownStr, 0);
-
-                GameData.StatusEffect status = null;
-                if (damageTypeStr.contains("bleed")) status = GameData.StatusEffect.BLEED;
-                else if (damageTypeStr.contains("burn")) status = GameData.StatusEffect.FIRE;
-
-                String description = "Damage: " + damageTypeStr + ", Hits: " + hits;
-                if (cooldown > 0) description += ", Cooldown: " + cooldown + " turns";
-
-                movesByCharacter.computeIfAbsent(character, key -> new ArrayList<>())
-                    .add(new MoveDef(moveName, description, hits, cooldown, status));
-            }
-            System.out.println("Loaded " + movesByCharacter.size() + " characters' moves from CSV.");
-        } catch (Exception ex) {
-            System.err.println("Error loading moves CSV: " + ex.getMessage());
-            loadMovesFromTxt();
-        }
-    }
-
     private void loadMovesFromTxt() {
         movesByCharacter.clear();
+
+        File dataDir = new File("data");
+        File csvMoveFile = TacticalCSVLoader.findDataFile(dataDir, "new_moves.csv", "moves.csv");
+        if (csvMoveFile != null) {
+            try {
+                List<Map<String, String>> rows = TacticalCSVLoader.loadCsv(csvMoveFile);
+                for (Map<String, String> row : rows) {
+                    String character = row.getOrDefault("Character", "").trim().toLowerCase();
+                    String moveName = row.getOrDefault("Move_Name", "").trim();
+                    String damageType = row.getOrDefault("Damage_Type", "").trim();
+                    int hits = parseIntOrDefault(row.getOrDefault("Hits", "1").trim(), 1);
+                    int cooldown = parseIntOrDefault(row.getOrDefault("Cooldown", "0").trim(), 0);
+
+                    if (character.isEmpty() || moveName.isEmpty()) {
+                        continue;
+                    }
+
+                    GameData.StatusEffect status = null;
+                    String lowered = (moveName + " " + damageType).toLowerCase();
+                    if (lowered.contains("bleed")) {
+                        status = GameData.StatusEffect.BLEED;
+                    } else if (lowered.contains("burn") || lowered.contains("fire")) {
+                        status = GameData.StatusEffect.FIRE;
+                    } else if (lowered.contains("morale")) {
+                        status = GameData.StatusEffect.MORALE;
+                    } else if (lowered.contains("cripple") || lowered.contains("low blow")) {
+                        status = GameData.StatusEffect.CRIPPLE;
+                    }
+
+                    String description = damageType;
+                    if (hits > 1) {
+                        description = description + ", " + hits + " hit(s)";
+                    }
+                    if (cooldown > 0) {
+                        description = description + ", " + cooldown + " turn cooldown";
+                    }
+
+                    movesByCharacter.computeIfAbsent(character, key -> new ArrayList<>())
+                        .add(new MoveDef(moveName, description, hits, cooldown, status));
+                }
+                return;
+            } catch (IOException ignored) {
+                // Fall back to the legacy text file parser below.
+            }
+        }
+
         File moveFile = new File("moves.txt");
         if (!moveFile.exists()) {
             return;
@@ -882,6 +1233,10 @@ public class combatPanel extends JPanel {
             return "Unknown";
         }
         if (id.startsWith("enemy_")) {
+            String displayName = enemyDisplayNames.get(id);
+            if (displayName != null && !displayName.isBlank()) {
+                return displayName;
+            }
             return id.replace("enemy_", "").replace('_', ' ').toUpperCase();
         }
         return Character.toUpperCase(id.charAt(0)) + id.substring(1);
@@ -922,4 +1277,5 @@ public class combatPanel extends JPanel {
             return null;
         }
     }
+
 }
