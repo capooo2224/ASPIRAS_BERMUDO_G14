@@ -54,6 +54,11 @@ public class combatPanel extends JPanel {
     private final Map<String, List<MoveDef>> movesByCharacter = new HashMap<>();
     private final Map<String, Integer> moveCooldowns = new HashMap<>();
     private int allyTurnIndex = 0;
+    private int enemyTurnIndex = 0;
+    private int currentRound = 1;
+    
+    private enum CombatPhase { ALLY_TURN, ENEMY_TURN }
+    private CombatPhase currentPhase = CombatPhase.ALLY_TURN;
 
     private static class MoveDef {
         private final String moveName;
@@ -288,8 +293,14 @@ public class combatPanel extends JPanel {
         }
 
         for (int i = 0; i < enemyTrianglePortraits.length && i < ENEMY_IDS.length; i++) {
-            enemyTrianglePortraits[i].setIcon(loadPortraitIcon(ENEMY_IDS[i], 96, 96));
-            enemyTrianglePortraits[i].setText("<html><center><b>" + formatName(ENEMY_IDS[i]) + "</b></center></html>");
+            String enemyId = ENEMY_IDS[i];
+            enemyTrianglePortraits[i].setIcon(loadPortraitIcon(enemyId, 96, 96));
+            
+            GameData.CharacterStats enemyStats_i = enemyStats.get(enemyId);
+            int hp = enemyStats_i == null ? 0 : enemyStats_i.getCurrentHealth();
+            int maxHp = enemyStats_i == null ? 1 : Math.max(1, enemyStats_i.getMaxHealth());
+            
+            enemyTrianglePortraits[i].setText("<html><center><b>" + formatName(enemyId) + "</b><br/>HP: " + hp + "/" + maxHp + "</center></html>");
             enemyTrianglePortraits[i].setForeground(Color.WHITE);
         }
 
@@ -355,14 +366,26 @@ public class combatPanel extends JPanel {
     }
 
     private void onAttackPressed() {
-        List<String> livingAllies = getLivingAlliesInCombatOrder();
-        if (livingAllies.isEmpty()) {
+        if (currentPhase != CombatPhase.ALLY_TURN) {
+            appendBattleLog("Not an ally's turn.");
+            return;
+        }
+        
+        String currentActor = getCurrentLivingAlly();
+        if (currentActor == null) {
             appendBattleLog("All allies are down. Returning to exploration.");
             main.showScreen("Tiles");
             return;
         }
 
-        showActorSelectionOverlay(livingAllies);
+        List<MoveDef> moveList = movesByCharacter.getOrDefault(currentActor, List.of());
+        if (moveList.isEmpty()) {
+            appendBattleLog(formatName(currentActor) + " has no loaded moves. Using basic attack.");
+            executeMove(currentActor, new MoveDef("Basic Strike", "Fallback attack", 1, 0, null));
+            return;
+        }
+
+        showAttackOverlay(currentActor, moveList);
     }
 
     private JPanel createAttackOverlayPanel() {
@@ -514,9 +537,42 @@ public class combatPanel extends JPanel {
         }
 
         handleDeathsAndDots();
-        performEnemyTurn();
+        
+        // Apply cooldown BEFORE advancing turn
+        if (move.cooldown > 0) {
+            String cooldownKey = actorId + ":" + move.moveName;
+            moveCooldowns.put(cooldownKey, move.cooldown);
+        }
+        
+        // Try to advance to next living ally
+        String nextAlly = getNextLivingAlly();
+        if (nextAlly != null && !nextAlly.isEmpty()) {
+            // There are more allies, continue with their turn
+            tickCooldowns();
+            refreshBattlePanels();
+            appendBattleLog("\n" + formatName(nextAlly) + "'s turn.");
+        } else {
+            // All allies have gone, start enemy turns
+            currentPhase = CombatPhase.ENEMY_TURN;
+            appendBattleLog("\n========== Enemy Phase ==========");
+            performAllEnemyTurns();
+            
+            // After all enemies attack, check if battle is over
+            if (allAlliesDefeated()) {
+                appendBattleLog("All allies have been defeated!");
+                main.showScreen("Tiles");
+                return;
+            }
+            
+            // Move to next round
+            currentRound++;
+            currentPhase = CombatPhase.ALLY_TURN;
+            allyTurnIndex = 0;
+            enemyTurnIndex = 0;
+            appendBattleLog("\n========== Round " + currentRound + " - Ally Phase ==========");
+        }
+        
         tickCooldowns();
-        advanceTurnOrder();
         refreshBattlePanels();
 
         if (allEnemiesDefeated()) {
@@ -554,6 +610,55 @@ public class combatPanel extends JPanel {
         handleDeathsAndDots();
     }
 
+    private void performAllEnemyTurns() {
+        for (String enemyId : ENEMY_IDS) {
+            GameData.CharacterStats enemy = enemyStats.get(enemyId);
+            if (enemy == null || !enemy.isAlive()) {
+                continue;
+            }
+
+            // Pick a random living ally
+            List<String> livingAllies = getLivingAlliesInCombatOrder();
+            if (livingAllies.isEmpty()) {
+                appendBattleLog("All allies defeated!");
+                return;
+            }
+
+            String targetAllyId = livingAllies.get(random.nextInt(livingAllies.size()));
+            GameData.CharacterStats targetAlly = gameData.getCharacterStats(targetAllyId);
+            if (targetAlly == null) {
+                continue;
+            }
+
+            int damage = Math.max(1, (int) Math.round(10 * enemy.getMoraleMultiplier()));
+            String attackType = "basic strike";
+            
+            if (enemy.getStatusStacks(GameData.StatusEffect.FIRE) > 0) {
+                damage = Math.max(1, (int) Math.round(damage * 1.1));
+                attackType = "flaming strike";
+            }
+
+            targetAlly.takeDamage(damage);
+            appendBattleLog("  " + formatName(enemyId) + " uses " + attackType + " on " + formatName(targetAllyId) + " for " + damage + " damage.");
+            
+            if (!targetAlly.isAlive()) {
+                gameData.handleCharacterDeath(targetAllyId);
+                appendBattleLog("  >> " + formatName(targetAllyId) + " was defeated!");
+            } else {
+                int remainingHp = targetAlly.getCurrentHealth();
+                int maxHp = targetAlly.getMaxHealth();
+                appendBattleLog("  >> " + formatName(targetAllyId) + " now has " + remainingHp + "/" + maxHp + " HP");
+            }
+
+            handleDeathsAndDots();
+        }
+
+        if (allAlliesDefeated()) {
+            appendBattleLog("\nAll allies have been defeated. Returning to exploration.");
+            main.showScreen("Tiles");
+        }
+    }
+
     private void handleDeathsAndDots() {
         for (String allyId : getCombatTeamOrder()) {
             GameData.CharacterStats ally = gameData.getCharacterStats(allyId);
@@ -588,10 +693,37 @@ public class combatPanel extends JPanel {
             appendBattleLog("Run attempt succeeded (50/50). Returning to exploration.");
             main.showScreen("Tiles");
         } else {
-            appendBattleLog("Run failed. Turn passed.");
-            performEnemyTurn();
+            appendBattleLog("Run failed. Skipping turn.");
+            
+            // Try to advance to next living ally
+            String nextAlly = getNextLivingAlly();
+            if (nextAlly != null && !nextAlly.isEmpty()) {
+                // There are more allies, continue with their turn
+                tickCooldowns();
+                refreshBattlePanels();
+                appendBattleLog("\n" + formatName(nextAlly) + "'s turn.");
+            } else {
+                // All allies have gone, start enemy turns
+                currentPhase = CombatPhase.ENEMY_TURN;
+                appendBattleLog("\n========== Enemy Phase ==========");
+                performAllEnemyTurns();
+                
+                // After all enemies attack, check if battle is over
+                if (allAlliesDefeated()) {
+                    appendBattleLog("All allies have been defeated!");
+                    main.showScreen("Tiles");
+                    return;
+                }
+                
+                // Move to next round
+                currentRound++;
+                currentPhase = CombatPhase.ALLY_TURN;
+                allyTurnIndex = 0;
+                enemyTurnIndex = 0;
+                appendBattleLog("\n========== Round " + currentRound + " - Ally Phase ==========");
+            }
+            
             tickCooldowns();
-            advanceTurnOrder();
             refreshBattlePanels();
         }
     }
@@ -600,10 +732,14 @@ public class combatPanel extends JPanel {
         initializeEnemyRoster();
         moveCooldowns.clear();
         allyTurnIndex = 0;
+        enemyTurnIndex = 0;
+        currentRound = 1;
+        currentPhase = CombatPhase.ALLY_TURN;
         hideAttackOverlay();
         battleLogArea.setText("");
         refreshBattlePanels();
-        appendBattleLog("Combat started. " + getCurrentActorDisplayName() + " takes the first action.");
+        appendBattleLog("========== Round " + currentRound + " - Ally Phase ==========");
+        appendBattleLog(getCurrentActorDisplayName() + " takes the first action.");
     }
 
     private List<String> getLivingAlliesInCombatOrder() {
@@ -632,6 +768,25 @@ public class combatPanel extends JPanel {
     private void advanceTurnOrder() {
         int teamSize = Math.max(1, getCombatTeamOrder().size());
         allyTurnIndex = (allyTurnIndex + 1) % teamSize;
+    }
+
+    private String getNextLivingAlly() {
+        List<String> order = getCombatTeamOrder();
+        if (order.isEmpty()) {
+            return null;
+        }
+
+        // Look for the next living ally starting from allyTurnIndex + 1, only going forward (no wrapping)
+        for (int i = allyTurnIndex + 1; i < order.size(); i++) {
+            String allyId = order.get(i);
+            GameData.CharacterStats stats = gameData.getCharacterStats(allyId);
+            if (stats != null && stats.isAlive()) {
+                allyTurnIndex = i;
+                return allyId;
+            }
+        }
+        // No more allies remaining in this round
+        return null;
     }
 
     private String getCurrentLivingAlly() {
@@ -719,6 +874,16 @@ public class combatPanel extends JPanel {
     private boolean allEnemiesDefeated() {
         for (String enemyId : ENEMY_IDS) {
             GameData.CharacterStats stats = enemyStats.get(enemyId);
+            if (stats != null && stats.isAlive()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean allAlliesDefeated() {
+        for (String allyId : getCombatTeamOrder()) {
+            GameData.CharacterStats stats = gameData.getCharacterStats(allyId);
             if (stats != null && stats.isAlive()) {
                 return false;
             }
