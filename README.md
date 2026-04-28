@@ -15,7 +15,7 @@ And then open the repo folder using file manager and look for Site12.bat to play
 
 # How to play the game 
 ## Scavenging
-Click on the door to enter scavenging mode. The player will be prompted to pick which characters will enter that mode. There will be tiles on the right side wherein the player will have to move it to either get resources and find the exit although there would be chances of entering combat.
+Click on the door to enter scavenging mode. The player will be prompted to select where to go and pick which characters will enter that mode. There will be tiles on the right side wherein the player will have to move it to either get resources and find the exit although there would be chances of entering combat.
 
 ## Inventory
 The inventory can be accessed on the main screen or in scavenge mode. On the main screen players may choose on who to use the item while in scavenge mode, the items will be used by who needs it the most.
@@ -28,5 +28,20 @@ beside the pause button is the folder icon which, it's where you can acess the i
 
 # Final build 
 
-All characters Alive
+Main Menu
+![alt text](ForREADME/MainMenu.png)
 
+All characters Alive
+![All characters are alive](ForREADME/AllAlive.png)
+
+Some characters almost dead
+![Some characters are almost](ForREADME/SomeAlmostDead.png)
+
+Scavenge Menu
+![alt text](ForREADME/ScavengeMenu.png)
+
+Combat Menu
+![alt text](ForREADME/CombatMenu.png)
+
+Map
+![alt text](ForREADME/Map.png)
