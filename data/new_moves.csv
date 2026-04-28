@@ -1,0 +1,34 @@
+Character,Move_Name,Energy_Cost,Damage_Type,Hits,Cooldown
+Azrael,Decimation,2,Bullet,2,2
+Azrael,Cascading Blows,3,Physical,5,4
+Azrael,Low Blow,0,Physical,1,0
+Azrael,Angel of Death,4,Bullet,8,5
+Azrael,Improbability Drive,5,Buff,0,5
+Azrael,High-Caliber Chamber,1,Buff,0,1
+Azrael,Tactical Reload,0,Utility,0,3
+Lazarus,Surgical Incision,0,Bleed,1,0
+Lazarus,Medical Malpractice,3,Bleed,5,3
+Lazarus,First-aid Response,1,Heal,0,1
+Lazarus,Suppressive Fire,2,Bullet,3,2
+Lazarus,I am Ze UBERMAGE!?!,6,Revive,0,0
+Lazarus,Hemorrhage,3,Bleed,1,4
+Lazarus,Coagulate,2,Heal,0,2
+Gambit,Russian Roulette,4,Bullet,6,3
+Gambit,All-in,5,Bleed,1,5
+Gambit,Two-Pair,3,Physical,2,2
+Gambit,Royal Flush,5,Buff,0,0
+Gambit,Let’s go gambling,0,Bullet,1,0
+Gambit,Loaded Dice,3,Utility,0,5
+Gambit,Pot Limit,0,Variable,1,0
+Terry Smith,Morale Chant,2,Heal/Buff,0,1
+Terry Smith,Rally,3,Buff,0,3
+Terry Smith,Inspire,1,Buff,0,2
+Terry Smith,Vilification,0,Taunt,0,0
+Terry Smith,Stoic Resolve,2,Buff,0,3
+Terry Smith,Call to Arms,4,Utility,0,4
+Raphaela,Self Defense,0,Bullet,1,0
+Raphaela,First-aid Response,1,Heal,0,1
+Raphaela,Guiding Light,2,Cleanse/Buff,0,1
+Raphaela,Angel of Healing,3,Bullet/Heal,2,2
+Raphaela,Sanctuary,2,Utility,0,3
+Raphaela,Purifying Bolt,2,Burn,1,2

@@ -1,0 +1,8 @@
+Category,Type,Value
+Damage,Bullet,3-5
+Damage,Physical,2
+Damage,Bleed,1 hit + 2 per turn
+Damage,Burn,1 hit + 5 per turn
+Sanity,Low Sanity (>10),+5 Dmg Taken / -3 Dmg Dealt
+Sanity,Insane (0),+20 Dmg Taken / No Energy Gain
+Morale,Morale Stack (max 6),-5% Stats per stack

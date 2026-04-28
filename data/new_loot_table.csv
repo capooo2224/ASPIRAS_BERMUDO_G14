@@ -1,0 +1,44 @@
+Rarity,Item_Name,Effect
+Common,Bandage,+20% Heal
+Common,Rock,No effect
+Common,Wooden plank,Crafting material
+Common,String,Crafting material
+Common,Dust,No effect
+Common,Paper,No effect
+Common,Folders,Research lore
+Common,Unknown meat,Food (?)
+Common,Lizard,Food (?)
+Common,Rat,Food (?)
+Common,Still water,"-20% Health, Death after day"
+Common,Cans,Tin material
+Common,Ammo,Ammo resource
+Common,Rope,Tool resource
+Rare,Bone,No effect
+Rare,Scissors,Adds Bleed to Physical (One-time loot)
+Rare,Tape,Prevents Bleed
+Rare,Medkit,+35% Heal
+Rare,Tourniquet,"+12% Heal, Removes Bleeds"
+Rare,Flask (Mysterious),Full Heal
+Rare,Flask (Unknown),-35% Health
+Rare,Flask (Questionable),-3 Sanity
+Rare,Apple,"+10% Hunger, +15% Thirst, +1 Sanity"
+Rare,Crackers,+12% Hunger
+Rare,Water bottle,+30% Hydration
+Rare,Canned rations (Old),+30% Hunger
+Rare,Batteries,Flashlight/Radio resource
+Epic,Scientist’s Guitar,+1 Sanity (2 uses/day)
+Epic,Water Jug,+80% Hydration (3 uses)
+Epic,Canned rations (Large),+60% Hunger
+Epic,Notebook,+5 Sanity
+Epic,Sanity pill,+4 Sanity
+Epic,Bread,Food item
+Epic,Vodka,"-5% Hydration, Full Sanity, Removes Morale Debuff"
+Epic,Flashlight,Safe tile scouting (3 uses)
+Epic,Radio,Unfinished item
+Epic,Soda can,+35% Hydration
+Legendary,Rice,+80% Hunger
+Legendary,Funny bone,Special item
+Legendary,Trauma kit,"Full Heal, Clear Status Effects"
+Legendary,MRE,Full Hunger
+Legendary,Incendiary ammo,Adds Burn to Bullet damage
+Legendary,Hollow-point ammo,Adds Bleed/Cripple to Bullet damage

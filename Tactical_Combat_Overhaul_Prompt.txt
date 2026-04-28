@@ -1,0 +1,38 @@
+## Prompt: Tactical Combat System Overhaul
+
+**Objective:** Replace the existing legacy combat system with a high-stakes, "Enemy-Focused" Tactical RPG engine. This system prioritizes resource management, risk/reward multi-hit scaling, and a dual-layer psychological stress mechanic (Sanity and Morale).
+
+### 1. Mandatory CSV Integration
+The engine must be designed to parse the following provided CSV files at startup to initialize game objects. These files are the "Source of Truth":
+- **Combat Data:** Use 'moves.csv' and 'game_mechanics.csv' for damage values, costs, and penalties.
+- **Entity Data:** Use 'characters.csv' and 'enemies.csv' for HP pools and traits.
+- **Exploration Data:** Use 'loot_table.csv', 'tile_chances.csv', and 'rarity_weights.csv'.
+
+### 2. Core Damage & Multi-Hit Architecture
+Implement four distinct damage types as defined in 'game_mechanics.csv':
+- **Bullet:** 3 - 5 damage per hit.
+- **Physical:** 2 damage per hit.
+- **Bleed:** 1 damage per hit + 2 stacking damage at the end of every turn.
+- **Burn:** 1 damage per hit + 5 flat damage at the end of every turn.
+
+**Multi-Hit Engine:** The code must support the "Hits" column. For example, if a move (like Azrael's 'Angel of Death') specifies 8 hits, the damage calculation must loop 8 times, applying any flat damage buffs (from Terry Smith) to EACH individual hit.
+
+### 3. The Stress System (Sanity & Morale)
+Implement two depleting resources that modify combat math:
+- **Morale:** Max 6 stacks. Each stack applies a flat -5% penalty to all stats.
+- **Sanity:**
+    - **Level 1 (>10):** Target receives +5 damage on all hits and deals -3 damage.
+    - **Level 2 (0 - Insane):** Target receives +20 damage on all hits and CANNOT gain Energy.
+- **Exception:** The 'Gambit' entity must be flagged as "Hardened," making him immune to Sanity/Morale loss.
+
+### 4. Inventory & Scavenging Logic
+- **Tile Exploration:** 20% Loot, 60% None, 20% Combat. 
+- **Pity Timer:** If 5 consecutive "None" tiles are encountered, the 5th tile MUST force a Loot event.
+- **Rarity Rolling:** Upon a Loot event, roll Rarity based on 'rarity_weights.csv' (Common 60%, Rare 20%, Epic 10%, Legendary 5%).
+- **Item Effects:** Parse the "Effect" string from 'loot_table.csv' to modify HP, Sanity, Hunger, and Hydration. 
+- **Ammo Augments:** Certain items (Incendiary/Hollow-point) must modify the "Damage_Type" of Bullet moves.
+
+### 5. Technical Requirements (Java)
+- **Zero Hard-Coding:** Do not hard-code stats. Read all values from the CSVs.
+- **Modular Entities:** Use a generic Entity class for Heroes and Enemies.
+- **Status Processor:** Implement an end-of-turn phase to process stacking Bleed and Burn damage.

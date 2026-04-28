@@ -5,6 +5,7 @@ import javax.imageio.ImageIO;
 
 import com.capocann.site12.GameData;
 import com.capocann.site12.Main;
+import com.capocann.site12.tactical.TacticalManager;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import com.capocann.site12.tactical.TacticalCSVLoader;
 
 public class combatPanel extends JPanel {
     private static final String LABEL_BATTLE_LOG = "Battle Text";
@@ -54,6 +56,7 @@ public class combatPanel extends JPanel {
     private final Map<String, List<MoveDef>> movesByCharacter = new HashMap<>();
     private final Map<String, Integer> moveCooldowns = new HashMap<>();
     private int allyTurnIndex = 0;
+    private TacticalManager tacticalManager;
 
     private static class MoveDef {
         private final String moveName;
@@ -78,7 +81,8 @@ public class combatPanel extends JPanel {
         setLayout(new GridBagLayout());
 
         initializeEnemyRoster();
-        loadMovesFromTxt();
+        loadMovesFromCsv();
+        tacticalManager = new TacticalManager(gameData, enemyStats);
 
         allyPanel.setOpaque(false);
         reserveAllyPanel.setOpaque(false);
@@ -489,28 +493,22 @@ public class combatPanel extends JPanel {
     }
 
     private void executeMove(String actorId, MoveDef move) {
-        GameData.CharacterStats actor = gameData.getCharacterStats(actorId);
         String enemyId = getFirstLivingEnemy();
-        if (actor == null || enemyId == null) {
+        if (enemyId == null) {
             appendBattleLog("No valid target found.");
             return;
         }
 
-        GameData.CharacterStats target = enemyStats.get(enemyId);
-        double damageMultiplier = move.hitMultiplier;
-        if (actor.getStatusStacks(GameData.StatusEffect.FIRE) > 0) {
-            damageMultiplier *= 1.0 + (GameData.FIRE_DAMAGE_BOOST_PERCENT / 100.0);
-        }
-        damageMultiplier *= actor.getMoraleMultiplier();
-
-        int damage = Math.max(1, (int) Math.round(BASE_DAMAGE * damageMultiplier));
-        target.takeDamage(damage);
+        TacticalManager.TacticalResult tr = tacticalManager.applyMove(actorId, enemyId, move);
         appendBattleLog(formatName(actorId) + " used " + move.moveName + " on " + formatName(enemyId)
-                + " for " + damage + " damage.");
+                + " for " + tr.totalDamage + " damage.");
 
         if (move.appliesStatus != null) {
-            target.addStatusStacks(move.appliesStatus, 1);
-            appendBattleLog(formatName(enemyId) + " gained " + move.appliesStatus + ".");
+            GameData.CharacterStats target = enemyStats.get(enemyId);
+            if (target != null) {
+                target.addStatusStacks(move.appliesStatus, 1);
+                appendBattleLog(formatName(enemyId) + " gained " + move.appliesStatus + ".");
+            }
         }
 
         handleDeathsAndDots();
@@ -734,6 +732,47 @@ public class combatPanel extends JPanel {
     private String getCurrentActorDisplayName() {
         String actorId = getCurrentLivingAlly();
         return actorId == null ? "No one" : formatName(actorId);
+    }
+
+    private void loadMovesFromCsv() {
+        movesByCharacter.clear();
+        try {
+            File dataDir = new File("data");
+            File movesFile = TacticalCSVLoader.findDataFile(dataDir, "new_moves.csv", "moves.csv");
+            if (movesFile == null) {
+                System.err.println("No moves CSV found; loading fallback from moves.txt");
+                loadMovesFromTxt();
+                return;
+            }
+
+            List<Map<String,String>> rows = TacticalCSVLoader.loadCsv(movesFile);
+            for (Map<String,String> row : rows) {
+                String character = row.getOrDefault("Character", "").trim().toLowerCase();
+                String moveName = row.getOrDefault("Move_Name", "").trim();
+                String damageTypeStr = row.getOrDefault("Damage_Type", "Physical").trim().toLowerCase();
+                String hitsStr = row.getOrDefault("Hits", "1").trim();
+                String cooldownStr = row.getOrDefault("Cooldown", "0").trim();
+
+                if (character.isEmpty() || moveName.isEmpty()) continue;
+
+                int hits = parseIntOrDefault(hitsStr, 1);
+                int cooldown = parseIntOrDefault(cooldownStr, 0);
+
+                GameData.StatusEffect status = null;
+                if (damageTypeStr.contains("bleed")) status = GameData.StatusEffect.BLEED;
+                else if (damageTypeStr.contains("burn")) status = GameData.StatusEffect.FIRE;
+
+                String description = "Damage: " + damageTypeStr + ", Hits: " + hits;
+                if (cooldown > 0) description += ", Cooldown: " + cooldown + " turns";
+
+                movesByCharacter.computeIfAbsent(character, key -> new ArrayList<>())
+                    .add(new MoveDef(moveName, description, hits, cooldown, status));
+            }
+            System.out.println("Loaded " + movesByCharacter.size() + " characters' moves from CSV.");
+        } catch (Exception ex) {
+            System.err.println("Error loading moves CSV: " + ex.getMessage());
+            loadMovesFromTxt();
+        }
     }
 
     private void loadMovesFromTxt() {

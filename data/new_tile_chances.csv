@@ -1,0 +1,4 @@
+Tile_Type,Base_Chance,Special_Rule
+Loot,20%,Guaranteed on 5th consecutive 'None'
+None,60%,Pity timer at 5
+Combat,20%,N/A
