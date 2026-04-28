@@ -1,28 +1,27 @@
 @echo off
 setlocal
-set "ROOT=%~dp0"
-cd /d "%ROOT%"
+cd /d "%~dp0"
 
 :: 1. Cleanup
 if not exist "bin" mkdir "bin"
-if exist "sources.txt" del /q "sources.txt"
 
-:: 2. Find files using a direct pipe (This preserves all slashes)
-echo Finding Java files...
-dir /s /b *.java > sources.txt
-
-:: 3. Compile
-echo Compiling project...
-javac -d bin @sources.txt
+:: 2. Compile everything at once
+:: We are adding the \tactical and \io folders to the command
+echo Compiling all packages...
+javac -d bin ^
+ "src\com\capocann\site12\*.java" ^
+ "src\com\capocann\site12\ui\*.java" ^
+ "src\com\capocann\site12\tactical\*.java" ^
+ "src\com\capocann\site12\io\*.java"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo Build failed. Check the code for errors.
+    echo Build failed. Check the errors above.
     pause
     exit /b 1
 )
 
-:: 4. Run
+:: 3. Run the game
 echo Launching Site 12...
 java -cp bin com.capocann.site12.Main
 pause

@@ -711,7 +711,7 @@ public class combatPanel extends JPanel {
         }
 
         MoveDef enemyMove = buildEnemyMove(enemyId, ally);
-        TacticalManager.TacticalResult result = tacticalManager.applyMove(enemyId, allyId, enemyMove);
+        TacticalManager.TacticalResult result = tacticalManager.applyMove(enemy, ally, enemyId, allyId, enemyMove);
         appendBattleLog(formatName(enemyId) + " attacks " + formatName(allyId) + " for " + result.totalDamage + " damage.");
         if (!ally.isAlive()) {
             gameData.handleCharacterDeath(allyId);
@@ -740,7 +740,7 @@ public class combatPanel extends JPanel {
             }
 
             MoveDef enemyMove = buildEnemyMove(enemyId, targetAlly);
-            TacticalManager.TacticalResult result = tacticalManager.applyMove(enemyId, targetAllyId, enemyMove);
+            TacticalManager.TacticalResult result = tacticalManager.applyMove(enemy, targetAlly, enemyId, targetAllyId, enemyMove);
             appendBattleLog("  " + formatName(enemyId) + " uses " + enemyMove.moveName + " on " + formatName(targetAllyId) + " for " + result.totalDamage + " damage.");
             
             if (!targetAlly.isAlive()) {
