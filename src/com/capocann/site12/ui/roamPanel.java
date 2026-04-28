@@ -82,7 +82,7 @@ public class roamPanel extends JPanel {
     private int playerCol = 0;
     private int exitRow = mapRows - 1;
     private int exitCol = mapCols - 1;
-    private double combatChance = 0.35;
+    private double combatChance = 0.20;
     private double lootChance = 0.40;
     private int noLootStreak = 0;
 

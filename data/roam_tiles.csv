@@ -3,5 +3,5 @@ rows,6
 cols,8
 start_row,0
 start_col,0
-combat_chance,0.35
+combat_chance,0.20
 loot_chance,0.10

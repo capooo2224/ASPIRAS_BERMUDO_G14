@@ -58,6 +58,7 @@ public class combatPanel extends JPanel {
     private final List<String> enemyIds = new ArrayList<>();
     private final Map<String, String> enemyDisplayNames = new HashMap<>();
     private final Map<String, String> enemyTraits = new HashMap<>();
+    private final Map<String, MoveDef> enemyMoveTable = new HashMap<>();
     private final Map<String, List<MoveDef>> movesByCharacter = new HashMap<>();
     private final Map<String, Integer> moveCooldowns = new HashMap<>();
     private int allyTurnIndex = 0;
@@ -104,6 +105,7 @@ public class combatPanel extends JPanel {
         setLayout(new GridBagLayout());
 
         initializeEnemyRoster();
+        loadEnemyMovesFromCsv();
         loadMovesFromTxt();
         tacticalManager = new TacticalManager(gameData, enemyStats);
 
@@ -1017,6 +1019,15 @@ public class combatPanel extends JPanel {
     }
 
     private MoveDef buildEnemyMove(String enemyId, GameData.CharacterStats targetStats) {
+        String displayNameKey = enemyDisplayNames.getOrDefault(enemyId, enemyId);
+        MoveDef csvMove = enemyMoveTable.get(normalizeMoveKey(enemyId));
+        if (csvMove == null) {
+            csvMove = enemyMoveTable.get(normalizeMoveKey(displayNameKey));
+        }
+        if (csvMove != null) {
+            return csvMove;
+        }
+
         String traits = enemyTraits.getOrDefault(enemyId, "").toLowerCase();
         int hits = 1;
         GameData.StatusEffect appliesStatus = null;
@@ -1048,6 +1059,51 @@ public class combatPanel extends JPanel {
         }
 
         return new MoveDef(moveName, description, hits, 0, appliesStatus);
+    }
+
+    private String normalizeMoveKey(String value) {
+        return value == null ? "" : value.trim().toLowerCase();
+    }
+
+    private void loadEnemyMovesFromCsv() {
+        enemyMoveTable.clear();
+
+        File dataDir = new File("data");
+        File enemyMoveFile = TacticalCSVLoader.findDataFile(dataDir, "new_enemy_moves.csv", "enemy_moves.csv");
+        if (enemyMoveFile == null || !enemyMoveFile.exists()) {
+            return;
+        }
+
+        try {
+            List<Map<String, String>> rows = TacticalCSVLoader.loadCsv(enemyMoveFile);
+            for (Map<String, String> row : rows) {
+                String enemyKey = normalizeMoveKey(row.getOrDefault("Enemy", row.getOrDefault("Name", "")));
+                String moveName = row.getOrDefault("Move_Name", "").trim();
+                String description = row.getOrDefault("Description", "").trim();
+                int hits = parseIntOrDefault(row.getOrDefault("Hits", "1").trim(), 1);
+                int cooldown = parseIntOrDefault(row.getOrDefault("Cooldown", "0").trim(), 0);
+                String statusText = row.getOrDefault("Status", "").trim().toLowerCase();
+
+                if (enemyKey.isEmpty() || moveName.isEmpty()) {
+                    continue;
+                }
+
+                GameData.StatusEffect status = null;
+                if (statusText.contains("bleed")) {
+                    status = GameData.StatusEffect.BLEED;
+                } else if (statusText.contains("burn") || statusText.contains("fire")) {
+                    status = GameData.StatusEffect.FIRE;
+                } else if (statusText.contains("morale") || statusText.contains("fear") || statusText.contains("dread")) {
+                    status = GameData.StatusEffect.MORALE;
+                } else if (statusText.contains("cripple")) {
+                    status = GameData.StatusEffect.CRIPPLE;
+                }
+
+                enemyMoveTable.put(enemyKey, new MoveDef(moveName, description, hits, cooldown, status));
+            }
+        } catch (IOException ignored) {
+            // Fall back to the hardcoded enemy move builder.
+        }
     }
 
     private boolean allEnemiesDefeated() {

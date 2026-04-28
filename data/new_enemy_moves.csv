@@ -1,0 +1,7 @@
+Enemy,Move_Name,Description,Damage_Type,Hits,Cooldown,Status
+shambler (decayed),Rotting Claw,Slow claw swipe from a decayed body,Bleed,2,0,bleed
+shambler (healthy),Frenzied Claw,Harder claw strike from a stronger shambler,Physical,4,0,bleed
+viral (scientist),Contaminated Needle,Infects the target with feverish pressure,Bleed,2,0,burn
+viral (guards),Suppressive Injection,Disciplined strike with morale pressure,Physical,2,0,morale
+the husk,Crushing Abomination,Heavy attack that punishes weakened targets,physical,8,4,cripple
+manifestation of fear,Terror Pulse,A strike meant to overwhelm sanity,,1,2,morale
