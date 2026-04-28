@@ -2,7 +2,9 @@
 Resource management game using Java
 
 # Overview
-Site 12 is a difficult turn-based, resource management survival game. You are not expected to survive your first encounter as the game is built on being really difficult and unbalanced
+Site 12 is a difficult turn-based, resource management survival game. You are not expected to survive your first few encounters as the game is built on being really difficult and unbalanced
+
+For now, the main goal is to survive 
 
 # How to clone and play locally
 ```

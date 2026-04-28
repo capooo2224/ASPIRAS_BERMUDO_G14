@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class resPanel extends JPanel {
     // UI Dimensions
@@ -189,6 +190,8 @@ public class resPanel extends JPanel {
     private Rectangle characterInfoPanelBounds = new Rectangle();
     private String pendingTargetItemId = null;
     private String pendingTargetItemName = null;
+    private boolean gameOverShown = false;
+    private long gameOverScore = 0L;
 
     public resPanel(Main main) {
         this.main = main;
@@ -238,6 +241,10 @@ public class resPanel extends JPanel {
         addMouseMotionListener(new MouseAdapter() {
             @Override
             public void mouseMoved(MouseEvent e) {
+                if (gameOverShown) {
+                    setCursor(Cursor.getDefaultCursor());
+                    return;
+                }
                 targetMouseX = e.getX();
                 targetMouseY = e.getY();
                 lastMouseX = e.getX();
@@ -271,6 +278,9 @@ public class resPanel extends JPanel {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
+                if (gameOverShown) {
+                    return;
+                }
                 Point click = e.getPoint();
 
                 if (pendingTargetItemId != null) {
@@ -379,9 +389,46 @@ public class resPanel extends JPanel {
         characterInfoPanelBounds = new Rectangle();
         pendingTargetItemId = null;
         pendingTargetItemName = null;
+        gameOverShown = false;
+        gameOverScore = 0L;
         characterInfoSlideTimer.stop();
         setCursor(Cursor.getDefaultCursor());
         repaint();
+    }
+
+    private boolean areAllCombatCharactersDead() {
+        List<String> team = gameData.getRoamTeamCharacterIds();
+        if (team == null || team.isEmpty()) {
+            return false;
+        }
+
+        for (String id : team) {
+            GameData.CharacterStats stats = gameData.getCharacterStats(id);
+            if (stats != null && stats.isAlive()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void updateGameOverState() {
+        if (gameOverShown) {
+            return;
+        }
+
+        if (!areAllCombatCharactersDead()) {
+            return;
+        }
+
+        gameOverShown = true;
+        gameOverScore = ThreadLocalRandom.current().nextLong(100_000_000L, 10_000_000_000L);
+        pendingTargetItemId = null;
+        pendingTargetItemName = null;
+        characterInfoTargetVisible = false;
+        selectedCharacterIndex = -1;
+        hoveredOverlayIndex = -1;
+        closePauseMenu();
+        setCursor(Cursor.getDefaultCursor());
     }
 
     private boolean isPauseMenuOpen() {
@@ -819,6 +866,8 @@ public class resPanel extends JPanel {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
 
+        updateGameOverState();
+
         int panelW = getWidth();
         int panelH = getHeight();
 
@@ -866,6 +915,36 @@ public class resPanel extends JPanel {
         drawCharacterInfoPanel((Graphics2D) g, panelW, panelH);
         drawPauseMenu((Graphics2D) g, panelW, panelH);
         drawPendingTargetPrompt((Graphics2D) g, panelW, panelH);
+        drawGameOverOverlay((Graphics2D) g, panelW, panelH);
+    }
+
+    private void drawGameOverOverlay(Graphics2D g, int panelW, int panelH) {
+        if (!gameOverShown) {
+            return;
+        }
+
+        Graphics2D ui = (Graphics2D) g.create();
+        ui.setColor(new Color(0, 0, 0, 205));
+        ui.fillRect(0, 0, panelW, panelH);
+
+        String title = "GAME OVER";
+        String scoreText = "SCORE: " + gameOverScore;
+
+        ui.setColor(new Color(220, 40, 40));
+        ui.setFont(new Font("SansSerif", Font.BOLD, 78));
+        FontMetrics titleFm = ui.getFontMetrics();
+        int titleX = (panelW - titleFm.stringWidth(title)) / 2;
+        int titleY = (panelH / 2) - 24;
+        ui.drawString(title, titleX, titleY);
+
+        ui.setColor(Color.WHITE);
+        ui.setFont(new Font("SansSerif", Font.BOLD, 36));
+        FontMetrics scoreFm = ui.getFontMetrics();
+        int scoreX = (panelW - scoreFm.stringWidth(scoreText)) / 2;
+        int scoreY = titleY + 58;
+        ui.drawString(scoreText, scoreX, scoreY);
+
+        ui.dispose();
     }
 
     private void drawPendingTargetPrompt(Graphics2D g, int panelW, int panelH) {

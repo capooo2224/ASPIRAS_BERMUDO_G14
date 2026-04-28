@@ -438,8 +438,8 @@ public class combatPanel extends JPanel {
         
         String currentActor = getCurrentLivingAlly();
         if (currentActor == null) {
-            appendBattleLog("All allies are down. Returning to exploration.");
-            main.showScreen("Tiles");
+            appendBattleLog("All allies are down. Triggering game over.");
+            main.showScreen("60secs");
             return;
         }
 
@@ -664,7 +664,7 @@ public class combatPanel extends JPanel {
             // After all enemies attack, check if battle is over
             if (allAlliesDefeated()) {
                 appendBattleLog("All allies have been defeated!");
-                main.showScreen("Tiles");
+                main.showScreen("60secs");
                 return;
             }
             
@@ -756,8 +756,8 @@ public class combatPanel extends JPanel {
         }
 
         if (allAlliesDefeated()) {
-            appendBattleLog("\nAll allies have been defeated. Returning to exploration.");
-            main.showScreen("Tiles");
+            appendBattleLog("\nAll allies have been defeated. Triggering game over.");
+            main.showScreen("60secs");
         }
     }
 
@@ -813,7 +813,7 @@ public class combatPanel extends JPanel {
                 // After all enemies attack, check if battle is over
                 if (allAlliesDefeated()) {
                     appendBattleLog("All allies have been defeated!");
-                    main.showScreen("Tiles");
+                    main.showScreen("60secs");
                     return;
                 }
                 
