@@ -12,7 +12,7 @@ import com.capocann.site12.Main;
 import java.awt.*;
 
 public class menuPanel extends JPanel {
-    private static final boolean SHOW_MENU_DEBUG_STATUS = true;
+    private static final boolean SHOW_MENU_DEBUG_STATUS = false;
 
     private JPanel actions;
     private JLabel debugStatusLabel;
@@ -44,86 +44,10 @@ public class menuPanel extends JPanel {
             setDebugStatus("INIT", false);
         }
 
-        // small toggle button (top-right) to enable click-to-read coordinates
-        JButton coordToggle = new JButton("Coords: OFF");
-        coordToggle.setFocusable(false);
-        coordToggle.setPreferredSize(new Dimension(100, 28));
-        coordToggle.addActionListener(ae -> {
-            clickCoordsEnabled = !clickCoordsEnabled;
-            coordToggle.setText(clickCoordsEnabled ? "Coords: ON" : "Coords: OFF");
-
-            // lazily create glass pane that intercepts clicks
-            JRootPane rp = SwingUtilities.getRootPane(menuPanel.this);
-            if (rp != null) {
-                if (clickGlass == null) {
-                    clickGlass = new JPanel(null) {
-                        @Override
-                        protected void paintComponent(Graphics g) {
-                            // transparent
-                        }
-                    };
-                    clickGlass.setOpaque(false);
-                    clickGlass.addMouseListener(new java.awt.event.MouseAdapter() {
-                        @Override
-                        public void mouseClicked(java.awt.event.MouseEvent e) {
-                            if (!clickCoordsEnabled) return;
-                            // convert to menuPanel coordinate space
-                            Point p = SwingUtilities.convertPoint(clickGlass, e.getPoint(), menuPanel.this);
-                            String txt = "CLICK @ " + p.x + "," + p.y;
-                            setDebugStatus(txt, true);
-                            System.out.println(txt);
-
-                            // show a temporary label at click location
-                            JLabel coord = new JLabel(p.x + "," + p.y);
-                            coord.setForeground(Color.YELLOW);
-                            coord.setOpaque(false);
-                            coord.setBounds(Math.max(0, p.x), Math.max(0, p.y - 18), 80, 18);
-                            clickGlass.add(coord);
-                            clickGlass.repaint();
-                            new javax.swing.Timer(1000, ev -> {
-                                clickGlass.remove(coord);
-                                clickGlass.repaint();
-                                ((javax.swing.Timer) ev.getSource()).stop();
-                            }).start();
-                        }
-                    });
-                }
-                rp.setGlassPane(clickGlass);
-                clickGlass.setVisible(clickCoordsEnabled);
-                if (clickCoordsEnabled) clickGlass.requestFocusInWindow();
-            }
-        });
-        topBar.add(coordToggle, BorderLayout.EAST);
-
         content.add(topBar, BorderLayout.NORTH);
 
         // Center: three resizable placeholder rectangles with image links
         content.add(createThreePlaceholders(main), BorderLayout.CENTER);
-
-        actions = new JPanel(new FlowLayout(FlowLayout.CENTER, 16, 12));
-        actions.setOpaque(false);
-        actions.setVisible(true);
-
-        JButton toRes = new JButton("Go to 60secs");
-        JButton toTiles = new JButton("Go to Tiles");
-        JButton toCombat = new JButton("Go to OMORI");
-        JButton quit = new JButton("Quit");
-        toRes.addActionListener(e -> main.showScreen("60secs"));
-        toTiles.addActionListener(e -> main.showScreen("Tiles"));
-        toCombat.addActionListener(e -> main.showScreen("OMORI"));
-        quit.addActionListener(e -> {
-            Window window = SwingUtilities.getWindowAncestor(menuPanel.this);
-            if (window != null) {
-                window.dispose();
-            }
-            System.exit(0);
-        });
-
-        actions.add(toRes);
-        actions.add(toTiles);
-        actions.add(toCombat);
-        actions.add(quit);
-        content.add(actions, BorderLayout.SOUTH);
     }
 
     private void setDebugStatus(String playbackState, boolean buttonsVisible) {

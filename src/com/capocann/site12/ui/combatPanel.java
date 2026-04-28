@@ -1305,7 +1305,14 @@ public class combatPanel extends JPanel {
     private Icon loadPortraitIcon(String id, int width, int height) {
         String path;
         if (id.startsWith("enemy_")) {
-            path = "assets/res/Characters/terry/PFPTerry.png";
+            // Use display name for enemy image lookup
+            String displayName = enemyDisplayNames.getOrDefault(id, "Enemy");
+            path = switch (displayName.toLowerCase()) {
+                case "shambler (decayed)" -> "assets/res/Enemies/shambler-decayed.png";
+                case "viral (scientist)" -> "assets/res/Enemies/viral-scientist.png";
+                case "shambler (healthy)" -> "assets/res/Enemies/shambler-healthy.png";
+                default -> "assets/res/Characters/terry/PFPTerry.png"; // fallback
+            };
         } else {
             path = switch (id.toLowerCase()) {
                 case "kriegs" -> "assets/res/Characters/Kriegs/PFPKriegs.png";

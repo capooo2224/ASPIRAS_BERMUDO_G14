@@ -188,10 +188,10 @@ public class resPanel extends JPanel {
     private boolean characterInfoTargetVisible = false;
     private Rectangle characterInfoToggleBounds = new Rectangle();
     private Rectangle characterInfoPanelBounds = new Rectangle();
+    private Rectangle retryButtonBounds = new Rectangle();
     private String pendingTargetItemId = null;
     private String pendingTargetItemName = null;
     private boolean gameOverShown = false;
-    private long gameOverScore = 0L;
 
     public resPanel(Main main) {
         this.main = main;
@@ -279,6 +279,9 @@ public class resPanel extends JPanel {
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (gameOverShown) {
+                    if (retryButtonBounds.contains(e.getPoint())) {
+                        main.startNewRun();
+                    }
                     return;
                 }
                 Point click = e.getPoint();
@@ -366,13 +369,7 @@ public class resPanel extends JPanel {
             }
         });
 
-        JLabel label = new JLabel("60secs Placeholder Screen", SwingConstants.CENTER);
-        label.setFont(TITLE_FONT);
-        add(label, BorderLayout.CENTER);
-
-        JButton back = new JButton("Back to Menu");
-        back.addActionListener(e -> this.main.showScreen("Menu"));
-        add(back, BorderLayout.SOUTH);
+        // Removed placeholder label and back button
     }
 
     public void resetForNewRun() {
@@ -390,7 +387,6 @@ public class resPanel extends JPanel {
         pendingTargetItemId = null;
         pendingTargetItemName = null;
         gameOverShown = false;
-        gameOverScore = 0L;
         characterInfoSlideTimer.stop();
         setCursor(Cursor.getDefaultCursor());
         repaint();
@@ -420,7 +416,6 @@ public class resPanel extends JPanel {
         }
 
         gameOverShown = true;
-        gameOverScore = ThreadLocalRandom.current().nextLong(100_000_000L, 10_000_000_000L);
         pendingTargetItemId = null;
         pendingTargetItemName = null;
         characterInfoTargetVisible = false;
@@ -927,7 +922,7 @@ public class resPanel extends JPanel {
         ui.fillRect(0, 0, panelW, panelH);
 
         String title = "GAME OVER";
-        String scoreText = "SCORE: " + gameOverScore;
+        String buttonText = "RETRY";
 
         ui.setColor(new Color(220, 40, 40));
         ui.setFont(new Font("SansSerif", Font.BOLD, 78));
@@ -936,12 +931,23 @@ public class resPanel extends JPanel {
         int titleY = (panelH / 2) - 24;
         ui.drawString(title, titleX, titleY);
 
+        // Draw retry button
         ui.setColor(Color.WHITE);
         ui.setFont(new Font("SansSerif", Font.BOLD, 36));
-        FontMetrics scoreFm = ui.getFontMetrics();
-        int scoreX = (panelW - scoreFm.stringWidth(scoreText)) / 2;
-        int scoreY = titleY + 58;
-        ui.drawString(scoreText, scoreX, scoreY);
+        FontMetrics buttonFm = ui.getFontMetrics();
+        int buttonW = 200;
+        int buttonH = 60;
+        int buttonX = (panelW - buttonW) / 2;
+        int buttonY = titleY + 80;
+        ui.setColor(new Color(60, 60, 60, 200));
+        ui.fillRoundRect(buttonX, buttonY, buttonW, buttonH, 10, 10);
+        ui.setColor(Color.WHITE);
+        ui.drawRoundRect(buttonX, buttonY, buttonW, buttonH, 10, 10);
+        int buttonTextX = buttonX + (buttonW - buttonFm.stringWidth(buttonText)) / 2;
+        int buttonTextY = buttonY + (buttonH + buttonFm.getAscent() - buttonFm.getDescent()) / 2;
+        ui.drawString(buttonText, buttonTextX, buttonTextY);
+
+        retryButtonBounds = new Rectangle(buttonX, buttonY, buttonW, buttonH);
 
         ui.dispose();
     }
