@@ -397,13 +397,12 @@ public class resPanel extends JPanel {
     }
 
     private boolean areAllCombatCharactersDead() {
-        List<String> team = gameData.getRoamTeamCharacterIds();
-        if (team == null || team.isEmpty()) {
+        Map<String, GameData.CharacterStats> allStats = gameData.getAllCharacterStats();
+        if (allStats == null || allStats.size() != 6) {
             return false;
         }
 
-        for (String id : team) {
-            GameData.CharacterStats stats = gameData.getCharacterStats(id);
+        for (GameData.CharacterStats stats : allStats.values()) {
             if (stats != null && stats.isAlive()) {
                 return false;
             }
